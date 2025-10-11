@@ -22,8 +22,8 @@ export async function executeSwapClient(
   slippageTolerance: number = 0.5,
   chainId: number = 1
 ): Promise<ethers.providers.TransactionReceipt> {
-  const fromToken = getTokenBySymbol(fromTokenSymbol, chainId)
-  const toToken = getTokenBySymbol(toTokenSymbol, chainId)
+  const fromToken = await getTokenBySymbol(fromTokenSymbol, chainId)
+  const toToken = await getTokenBySymbol(toTokenSymbol, chainId)
 
   if (!fromToken || !toToken) {
     throw new Error('Token not found')
