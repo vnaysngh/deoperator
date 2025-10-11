@@ -1,103 +1,202 @@
-import Image from "next/image";
+'use client'
+
+import { Chat } from '@/components/Chat'
+import { WalletConnect } from '@/components/WalletConnect'
+import { useAccount, useWalletClient } from 'wagmi'
+import { providers } from 'ethers'
+import { executeSwapClient } from '@/lib/swapClient'
+import { useState } from 'react'
 
 export default function Home() {
-  return (
-    <div className="font-sans grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20">
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="font-mono list-inside list-decimal text-sm/6 text-center sm:text-left">
-          <li className="mb-2 tracking-[-.01em]">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] font-mono font-semibold px-1 py-0.5 rounded">
-              src/app/page.tsx
-            </code>
-            .
-          </li>
-          <li className="tracking-[-.01em]">
-            Save and see your changes instantly.
-          </li>
-        </ol>
+  const { address } = useAccount()
+  const { data: walletClient } = useWalletClient()
+  const [isExecuting, setIsExecuting] = useState(false)
+  const [status, setStatus] = useState('')
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
+  const handleExecuteSwap = async (transactionData: {
+    fromToken: string
+    toToken: string
+    amount: string
+    slippage: string
+  }) => {
+    if (!walletClient || !address) {
+      setStatus('Please connect your wallet first')
+      return
+    }
+
+    try {
+      setIsExecuting(true)
+      setStatus('Getting swap quote...')
+
+      const quoteResponse = await fetch('/api/swap', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          fromToken: transactionData.fromToken,
+          toToken: transactionData.toToken,
+          amount: transactionData.amount,
+          slippage: transactionData.slippage,
+        }),
+      })
+
+      const quoteData = await quoteResponse.json()
+
+      if (!quoteData.success) {
+        throw new Error(quoteData.error || 'Failed to get quote')
+      }
+
+      setStatus('Preparing transaction...')
+
+      const provider = new providers.Web3Provider(walletClient as unknown as providers.ExternalProvider)
+      const signer = provider.getSigner()
+
+      setStatus(`Executing swap: ${transactionData.amount} ${transactionData.fromToken} → ${transactionData.toToken}`)
+
+      const receipt = await executeSwapClient(
+        transactionData.fromToken,
+        transactionData.toToken,
+        transactionData.amount,
+        quoteData.quote.outputAmount,
+        address,
+        signer,
+        parseFloat(transactionData.slippage)
+      )
+
+      setStatus(`Swap successful! Transaction: ${receipt.transactionHash}`)
+      console.log('Swap completed:', receipt)
+    } catch (error) {
+      console.error('Swap failed:', error)
+      setStatus(`Swap failed: ${error instanceof Error ? error.message : 'Unknown error'}`)
+    } finally {
+      setIsExecuting(false)
+    }
+  }
+
+  return (
+    <div className="min-h-screen">
+      {/* Header */}
+      <header className="border-b border-white/5">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-primary-600 to-primary-700 flex items-center justify-center shadow-glow">
+                <span className="text-white font-bold text-lg">U</span>
+              </div>
+              <span className="text-xl font-bold gradient-text">UniPilot</span>
+            </div>
+            <WalletConnect />
+          </div>
+        </div>
+      </header>
+
+      {/* Main Content */}
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* Hero Section */}
+        <div className="text-center mb-12 mt-8">
+          <h1 className="text-4xl sm:text-5xl md:text-6xl font-bold mb-4">
+            <span className="gradient-text">AI-Powered</span>
+            <br />
+            <span className="text-white">Uniswap Trading</span>
+          </h1>
+          <p className="text-gray-400 text-base sm:text-lg max-w-2xl mx-auto">
+            Trade tokens using natural language. No complex forms, just tell the AI what you want.
+          </p>
+        </div>
+
+        {/* Status Messages */}
+        {status && (
+          <div className="max-w-3xl mx-auto mb-6">
+            <div className={`glass-strong rounded-xl p-4 border ${
+              status.includes('failed') || status.includes('error')
+                ? 'border-red-500/30 bg-red-500/10'
+                : status.includes('successful')
+                ? 'border-emerald-500/30 bg-emerald-500/10'
+                : 'border-primary-500/30 bg-primary-500/10'
+            }`}>
+              <p className={`text-sm ${
+                status.includes('failed') || status.includes('error')
+                  ? 'text-red-400'
+                  : status.includes('successful')
+                  ? 'text-emerald-400'
+                  : 'text-primary-400'
+              }`}>
+                {status}
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* Loading Overlay */}
+        {isExecuting && (
+          <div className="max-w-3xl mx-auto mb-6">
+            <div className="glass-strong rounded-xl p-4 border border-primary-500/30">
+              <div className="flex items-center gap-3">
+                <div className="w-5 h-5 border-2 border-primary-500 border-t-transparent rounded-full animate-spin"></div>
+                <span className="text-sm text-gray-300">Processing transaction...</span>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Chat Interface */}
+        <div className="max-w-4xl mx-auto mb-12">
+          <Chat walletAddress={address} onExecuteSwap={handleExecuteSwap} />
+        </div>
+
+        {/* Features Grid */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-5xl mx-auto mb-12">
+          <div className="glass rounded-2xl p-6 hover:bg-white/5 transition-colors">
+            <div className="w-12 h-12 rounded-xl bg-primary-600/20 flex items-center justify-center mb-4">
+              <svg className="w-6 h-6 text-primary-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
+              </svg>
+            </div>
+            <h3 className="text-lg font-semibold text-white mb-2">Natural Language</h3>
+            <p className="text-sm text-gray-400">
+              Simply describe what you want to trade. No forms, no complexity.
+            </p>
+          </div>
+
+          <div className="glass rounded-2xl p-6 hover:bg-white/5 transition-colors">
+            <div className="w-12 h-12 rounded-xl bg-primary-600/20 flex items-center justify-center mb-4">
+              <svg className="w-6 h-6 text-primary-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+              </svg>
+            </div>
+            <h3 className="text-lg font-semibold text-white mb-2">Real-time Quotes</h3>
+            <p className="text-sm text-gray-400">
+              Get instant price quotes from Uniswap before executing.
+            </p>
+          </div>
+
+          <div className="glass rounded-2xl p-6 hover:bg-white/5 transition-colors">
+            <div className="w-12 h-12 rounded-xl bg-primary-600/20 flex items-center justify-center mb-4">
+              <svg className="w-6 h-6 text-primary-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+              </svg>
+            </div>
+            <h3 className="text-lg font-semibold text-white mb-2">Secure Execution</h3>
+            <p className="text-sm text-gray-400">
+              All trades execute through your connected wallet securely.
+            </p>
+          </div>
+        </div>
+
+        {/* Supported Tokens */}
+        <div className="text-center">
+          <p className="text-sm text-gray-500 mb-3">Supported Tokens</p>
+          <div className="flex flex-wrap justify-center gap-2">
+            {['WETH', 'USDC', 'USDT', 'DAI', 'WBTC', 'UNI'].map((token) => (
+              <span
+                key={token}
+                className="px-4 py-2 glass rounded-lg text-xs font-medium text-gray-300 hover:text-white hover:border-primary-500/30 transition-colors"
+              >
+                {token}
+              </span>
+            ))}
+          </div>
         </div>
       </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
     </div>
-  );
+  )
 }
