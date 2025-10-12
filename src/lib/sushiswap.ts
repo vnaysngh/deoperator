@@ -2,6 +2,23 @@ import { getTokenBySymbol } from "./tokens";
 
 const SUSHISWAP_API_BASE_URL = "https://api.sushi.com/quote/v7";
 
+// Chains verified to be supported by SushiSwap API v7
+// Based on testing and SushiSwap documentation
+export const SUSHISWAP_SUPPORTED_CHAINS = [
+  1,      // Ethereum
+  42161,  // Arbitrum
+  137,    // Polygon
+  56,     // BNB Chain
+  // Note: Unichain (130) support pending - check https://docs.sushi.com for updates
+] as const;
+
+/**
+ * Check if a chain is supported by SushiSwap API
+ */
+export function isSushiSwapChainSupported(chainId: number): boolean {
+  return (SUSHISWAP_SUPPORTED_CHAINS as readonly number[]).includes(chainId);
+}
+
 export interface SushiSwapQuote {
   success: boolean;
   fromToken: string;
@@ -53,6 +70,18 @@ export async function getSushiSwapQuote(
   maxSlippage: number = 0.005
 ): Promise<SushiSwapQuote> {
   try {
+    // Validate chain support first
+    if (!isSushiSwapChainSupported(chainId)) {
+      return {
+        success: false,
+        fromToken: fromTokenSymbol,
+        toToken: toTokenSymbol,
+        inputAmount: amount,
+        outputAmount: "0",
+        error: `SushiSwap doesn't support chain ID ${chainId} yet. Supported chains: Ethereum (1), Arbitrum (42161), Polygon (137), BNB Chain (56). Please try one of these chains.`,
+      };
+    }
+
     const fromToken = await getTokenBySymbol(fromTokenSymbol, chainId);
     const toToken = await getTokenBySymbol(toTokenSymbol, chainId);
 

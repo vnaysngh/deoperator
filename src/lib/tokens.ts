@@ -100,10 +100,11 @@ const CHAIN_TOKENS: Record<number, Record<string, Token>> = {
     BTCB: new Token(56, '0x7130d2A12B9BCbFAe4f2634d864A1Ee1Ce3Ead9c', 18, 'BTCB', 'Bitcoin BEP2'),
   },
 
-  // Unichain (1301) - Using Sepolia testnet addresses as placeholder
+  // Unichain (130) - Unichain mainnet (launched Feb 2025)
+  // Note: Token addresses to be updated once official token list is available
   [CHAIN_IDS.UNICHAIN]: {
-    WETH: new Token(1301, '0x7b79995e5f793A07Bc00c21412e50Ecae098E7f9', 18, 'WETH', 'Wrapped Ether'),
-    USDC: new Token(1301, '0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238', 6, 'USDC', 'USD Coin'),
+    WETH: new Token(130, '0x4200000000000000000000000000000000000006', 18, 'WETH', 'Wrapped Ether'),
+    USDC: new Token(130, '0xd9aAEc86B65D86f6A7B5B1b0c42FFA531710b6CA', 6, 'USDC', 'USD Coin'),
   },
 };
 

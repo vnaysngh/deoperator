@@ -4,7 +4,7 @@ export const CHAIN_IDS = {
   ARBITRUM: 42161,
   POLYGON: 137,
   BNB: 56,
-  UNICHAIN: 1301, // Unichain Sepolia testnet (update when mainnet launches)
+  UNICHAIN: 130, // Unichain mainnet (launched Feb 2025)
 } as const;
 
 // Chain names mapping

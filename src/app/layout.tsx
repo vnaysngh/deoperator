@@ -1,12 +1,12 @@
 import type { Metadata } from "next";
-import { Plus_Jakarta_Sans } from "next/font/google";
+import { JetBrains_Mono } from "next/font/google";
 import "./global.css";
 import { Providers } from "@/components/Providers";
 
-const plusJakartaSans = Plus_Jakarta_Sans({
+const jetbrains = JetBrains_Mono({
   subsets: ["latin"],
   weight: ["400", "500", "600", "700"],
-  variable: "--font-plus-jakarta-sans",
+  variable: "--font-mono",
   display: "swap"
 });
 
@@ -23,7 +23,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body className={`${plusJakartaSans.variable} antialiased`}>
+      <body className={`${jetbrains.variable} antialiased`}>
         <Providers>{children}</Providers>
       </body>
     </html>

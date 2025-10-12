@@ -101,12 +101,14 @@ export default function Home() {
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Hero Section */}
         <div className="text-center mb-12 mt-8">
-          <h1 className="text-4xl sm:text-5xl md:text-6xl font-bold mb-4">
-            <span className="gradient-text">AI-Powered Uniswap Trading</span>
+          <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold mb-4">
+            <span className="gradient-text">
+              Trade tokens using natural language
+            </span>
           </h1>
-          <p className="text-gray-400 text-base sm:text-lg max-w-2xl mx-auto">
-            Trade tokens using natural language. Just tell the AI what you want.
-          </p>
+          {/* <p className="text-gray-400 text-base sm:text-lg max-w-2xl mx-auto">
+            Trade tokens using natural language.
+          </p> */}
         </div>
 
         {/* Status Messages */}

@@ -37,9 +37,9 @@ export function Chat({ walletAddress }: ChatProps) {
   }, [messages, walletAddress, status]);
 
   return (
-    <div className="glass-strong rounded-2xl overflow-hidden shadow-2xl border border-white/10">
+    <div className="bg-black rounded-2xl overflow-hidden shadow-2xl">
       {/* Header */}
-      <div className="px-6 py-4 border-b border-white/5 bg-white/5">
+      {/*  <div className="px-6 py-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="relative">
@@ -49,12 +49,12 @@ export function Chat({ walletAddress }: ChatProps) {
             <h2 className="font-semibold text-white">Trading Assistant</h2>
           </div>
           {walletAddress && (
-            <div className="px-3 py-1 glass rounded-lg text-xs font-mono text-gray-400">
+            <div className="px-3 py-1 rounded-lg text-xs font-mono text-gray-400">
               {walletAddress.slice(0, 6)}...{walletAddress.slice(-4)}
             </div>
           )}
         </div>
-      </div>
+      </div> */}
 
       {/* Messages */}
       <div className="h-[500px] overflow-y-auto p-6 space-y-4">
@@ -106,11 +106,7 @@ export function Chat({ walletAddress }: ChatProps) {
             }`}
           >
             <div
-              className={`max-w-[80%] rounded-2xl px-4 py-3 ${
-                message.role === "user"
-                  ? "bg-gradient-to-br from-primary-600 to-primary-700 text-white shadow-glow"
-                  : "glass text-gray-200"
-              }`}
+              className={`max-w-[80%] rounded-2xl px-4 py-3 text-gray-200 bg-transparent`}
             >
               <div className="text-sm whitespace-pre-wrap break-words leading-relaxed">
                 {message.parts.map((part, index) => {
@@ -281,7 +277,7 @@ export function Chat({ walletAddress }: ChatProps) {
 
         {status === "streaming" && (
           <div className="flex justify-start">
-            <div className="glass rounded-2xl px-4 py-3">
+            <div className="rounded-2xl px-4 py-3">
               <div className="flex items-center gap-2">
                 <div className="w-2 h-2 bg-primary-500 rounded-full animate-bounce"></div>
                 <div className="w-2 h-2 bg-primary-500 rounded-full animate-bounce [animation-delay:0.2s]"></div>
@@ -305,9 +301,9 @@ export function Chat({ walletAddress }: ChatProps) {
             setInput("");
           }
         }}
-        className="p-4 border-t border-white/5 bg-white/5"
+        className="p-4"
       >
-        <div className="flex gap-3">
+        <div className="flex items-center">
           <input
             ref={inputRef}
             value={input}
@@ -318,15 +314,8 @@ export function Chat({ walletAddress }: ChatProps) {
                 : "Connect your wallet to start trading"
             }
             disabled={!walletAddress || status === "streaming"}
-            className="flex-1 px-4 py-3 glass-strong rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500/50 disabled:opacity-50 disabled:cursor-not-allowed text-white placeholder:text-gray-500 transition-all"
+            className="flex-1 px-0 py-3 bg-transparent border-b border-white/10 focus:outline-none focus:border-emerald-500/50 disabled:opacity-50 disabled:cursor-not-allowed text-white placeholder:text-gray-500 transition-colors caret-emerald-500"
           />
-          <button
-            type="submit"
-            disabled={!walletAddress || status === "streaming" || !input.trim()}
-            className="px-6 py-3 bg-gradient-to-r from-primary-600 to-primary-700 text-white rounded-xl hover:from-primary-500 hover:to-primary-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all font-medium shadow-glow hover:shadow-glow-lg"
-          >
-            Send
-          </button>
         </div>
       </form>
     </div>

@@ -15,66 +15,68 @@ export async function POST(req: Request) {
     messages: convertToModelMessages(messages),
     system: `You are a helpful multi-chain SushiSwap trading assistant. You help users get quotes and swap tokens across multiple blockchains.
 
-Supported chains:
-- Ethereum (chainId: 1)
-- Arbitrum (chainId: 42161)
-- Polygon (chainId: 137)
-- BNB Chain (chainId: 56)
-- Unichain (chainId: 1301)
+      🔗 SushiSwap Supported Chains (VERIFIED):
+      - Ethereum (chainId: 1) ✅
+      - Arbitrum (chainId: 42161) ✅
+      - Polygon (chainId: 137) ✅
+      - BNB Chain (chainId: 56) ✅
 
-Token Support:
-- Supports 1,200+ verified tokens through Uniswap token lists
-- Popular tokens: WETH, USDC, USDT, DAI, WBTC, UNI, LINK, AAVE, APE (ApeCoin), PEPE, SHIB, etc.
-- Chain-specific tokens: ARB (Arbitrum), MATIC (Polygon), WBNB/BTCB (BNB Chain)
+      ⚠️ Currently NOT Supported by SushiSwap:
+      - Unichain (chainId: 130) - Coming soon! Suggest users try Ethereum, Arbitrum, Polygon, or BNB Chain instead.
 
-🚨 CRITICAL RULE - ALWAYS ASK FOR CLARIFICATION:
-You MUST have ALL THREE pieces of information before calling any tool:
-1. From Token (e.g., APE, WETH, USDC)
-2. To Token (e.g., USDC, WETH, DAI)
-3. Chain ID (which blockchain)
+      Token Support:
+      - Supports 1,200+ verified tokens through Uniswap token lists
+      - Popular tokens: WETH, USDC, USDT, DAI, WBTC, UNI, LINK, AAVE, APE (ApeCoin), PEPE, SHIB, etc.
+      - Chain-specific tokens: ARB (Arbitrum), MATIC (Polygon), WBNB/BTCB (BNB Chain)
 
-If the user does NOT explicitly provide ALL THREE, you MUST ask clarifying questions:
+      🚨 CRITICAL RULE - ALWAYS ASK FOR CLARIFICATION:
+      You MUST have ALL THREE pieces of information before calling any tool:
+      1. From Token (e.g., APE, WETH, USDC)
+      2. To Token (e.g., USDC, WETH, DAI)
+      3. Chain ID (which blockchain)
 
-BAD Examples (DO NOT DO THIS):
-❌ User: "What's the price of APE?"
-   Bad Response: *calls getTokenPrice with APE/USDC on Ethereum*
+      If the user does NOT explicitly provide ALL THREE, you MUST ask clarifying questions:
 
-❌ User: "Quote for APE to USDC"
-   Bad Response: *calls getSwapQuote assuming Ethereum*
+      BAD Examples (DO NOT DO THIS):
+      ❌ User: "What's the price of APE?"
+        Bad Response: *calls getTokenPrice with APE/USDC on Ethereum*
 
-GOOD Examples (DO THIS):
-✅ User: "What's the price of APE?"
-   Good Response: "I'd be happy to check the APE price! Just to confirm:
-   - Did you mean ApeCoin (APE)?
-   - Which token would you like to see the price in? (e.g., USDC, WETH)
-   - Which chain? (Ethereum, Arbitrum, Polygon, BNB Chain)"
+      ❌ User: "Quote for APE to USDC"
+        Bad Response: *calls getSwapQuote assuming Ethereum*
 
-✅ User: "Quote for APE to USDC"
-   Good Response: "Sure! Just to confirm - which chain would you like this quote on?
-   - Ethereum (mainnet)
-   - Arbitrum
-   - Polygon
-   - BNB Chain"
+      GOOD Examples (DO THIS):
+      ✅ User: "What's the price of APE?"
+        Good Response: "I'd be happy to check the APE price! Just to confirm:
+        - Did you mean ApeCoin (APE)?
+        - Which token would you like to see the price in? (e.g., USDC, WETH)
+        - Which chain? (Ethereum, Arbitrum, Polygon, BNB Chain)"
 
-✅ User: "What's the price of APE in USDC on Ethereum?"
-   Good Response: *calls getTokenPrice with all parameters provided*
+      ✅ User: "Quote for APE to USDC"
+        Good Response: "Sure! Just to confirm - which chain would you like this quote on?
+        - Ethereum (mainnet)
+        - Arbitrum
+        - Polygon
+        - BNB Chain"
 
-Chain Detection Rules (ONLY when explicitly mentioned):
-- If user says "polygon" or "MATIC" → chainId: 137
-- If user says "arbitrum" or "ARB" → chainId: 42161
-- If user says "bnb" or "bsc" or "binance" → chainId: 56
-- If user says "ethereum" or "mainnet" or "eth" → chainId: 1
-- If user says "unichain" → chainId: 1301
+      ✅ User: "What's the price of APE in USDC on Ethereum?"
+        Good Response: *calls getTokenPrice with all parameters provided*
 
-NEVER assume a default chain. ALWAYS ask if not specified.
+      Chain Detection Rules (ONLY when explicitly mentioned):
+      - If user says "polygon" or "MATIC" → chainId: 137
+      - If user says "arbitrum" or "ARB" → chainId: 42161
+      - If user says "bnb" or "bsc" or "binance" → chainId: 56
+      - If user says "ethereum" or "mainnet" or "eth" → chainId: 1
+      - If user says "unichain" → Politely explain it's not yet supported, suggest alternatives
 
-When you have all information and get a quote:
-- Show chain name clearly
-- Show input and output amounts
-- Show price impact and gas estimates
-- Ask for confirmation before executing any swap
+      NEVER assume a default chain. ALWAYS ask if not specified.
 
-Be conversational, helpful, and ALWAYS prioritize accuracy over speed.`,
+      When you have all information and get a quote:
+      - Show chain name clearly
+      - Show input and output amounts
+      - Show price impact and gas estimates
+      - Ask for confirmation before executing any swap
+
+      Be conversational, helpful, and ALWAYS prioritize accuracy over speed.`,
     tools: {
       getSwapQuote: tool({
         description:
@@ -82,14 +84,22 @@ Be conversational, helpful, and ALWAYS prioritize accuracy over speed.`,
         inputSchema: z.object({
           fromToken: z
             .string()
-            .describe("The token symbol to swap from (e.g., WETH, USDC) - REQUIRED, must be confirmed by user"),
+            .describe(
+              "The token symbol to swap from (e.g., WETH, USDC) - REQUIRED, must be confirmed by user"
+            ),
           toToken: z
             .string()
-            .describe("The token symbol to swap to (e.g., USDC, DAI) - REQUIRED, must be confirmed by user"),
-          amount: z.string().describe("The amount of input token to swap - REQUIRED"),
+            .describe(
+              "The token symbol to swap to (e.g., USDC, DAI) - REQUIRED, must be confirmed by user"
+            ),
+          amount: z
+            .string()
+            .describe("The amount of input token to swap - REQUIRED"),
           chainId: z
             .number()
-            .describe("Chain ID - REQUIRED, must be explicitly provided by user. 1=Ethereum, 42161=Arbitrum, 137=Polygon, 56=BNB, 1301=Unichain. NO DEFAULT - always ask if not specified")
+            .describe(
+              "Chain ID - REQUIRED, must be explicitly provided by user. 1=Ethereum, 42161=Arbitrum, 137=Polygon, 56=BNB. NO DEFAULT - always ask if not specified"
+            )
         }),
         execute: async ({ fromToken, toToken, amount, chainId }) => {
           try {
@@ -149,24 +159,37 @@ Be conversational, helpful, and ALWAYS prioritize accuracy over speed.`,
           chainId: z
             .number()
             .optional()
-            .describe("Chain ID: 1=Ethereum, 42161=Arbitrum, 137=Polygon, 56=BNB, 1301=Unichain (default: 1)"),
+            .describe(
+              "Chain ID: 1=Ethereum, 42161=Arbitrum, 137=Polygon, 56=BNB (default: 1)"
+            ),
           slippage: z
             .string()
             .optional()
             .describe("Slippage tolerance in percentage (default: 0.5)")
         }),
-        execute: async ({ fromToken, toToken, amount, chainId = 1, slippage = "0.5" }) => {
+        execute: async ({
+          fromToken,
+          toToken,
+          amount,
+          chainId = 1,
+          slippage = "0.5"
+        }) => {
           try {
             const normalizedFrom = normalizeTokenSymbol(fromToken, chainId);
             const normalizedTo = normalizeTokenSymbol(toToken, chainId);
 
-            const fromTokenData = await getTokenBySymbol(normalizedFrom, chainId);
+            const fromTokenData = await getTokenBySymbol(
+              normalizedFrom,
+              chainId
+            );
             const toTokenData = await getTokenBySymbol(normalizedTo, chainId);
 
             if (!fromTokenData || !toTokenData) {
               return {
                 success: false,
-                error: `Token not found: ${!fromTokenData ? normalizedFrom : normalizedTo}`
+                error: `Token not found: ${
+                  !fromTokenData ? normalizedFrom : normalizedTo
+                }`
               };
             }
 
@@ -200,11 +223,15 @@ Be conversational, helpful, and ALWAYS prioritize accuracy over speed.`,
         description:
           "Get information about a specific token including its address and decimals. Supports thousands of tokens across multiple chains.",
         inputSchema: z.object({
-          symbol: z.string().describe("The token symbol (e.g., WETH, USDC, APE, LINK)"),
+          symbol: z
+            .string()
+            .describe("The token symbol (e.g., WETH, USDC, APE, LINK)"),
           chainId: z
             .number()
             .optional()
-            .describe("Chain ID: 1=Ethereum, 42161=Arbitrum, 137=Polygon, 56=BNB, 1301=Unichain (default: 1)")
+            .describe(
+              "Chain ID: 1=Ethereum, 42161=Arbitrum, 137=Polygon, 56=BNB (default: 1)"
+            )
         }),
         execute: async ({ symbol, chainId = 1 }) => {
           const normalized = normalizeTokenSymbol(symbol, chainId);
@@ -233,13 +260,19 @@ Be conversational, helpful, and ALWAYS prioritize accuracy over speed.`,
         inputSchema: z.object({
           fromToken: z
             .string()
-            .describe("The token to get the price for (e.g., WETH, WBTC, APE) - REQUIRED, must be confirmed by user"),
+            .describe(
+              "The token to get the price for (e.g., WETH, WBTC, APE) - REQUIRED, must be confirmed by user"
+            ),
           toToken: z
             .string()
-            .describe("The quote token to price it in (e.g., USDC, WETH, DAI) - REQUIRED, must be confirmed by user. Common choice is USDC but ALWAYS ask"),
+            .describe(
+              "The quote token to price it in (e.g., USDC, WETH, DAI) - REQUIRED, must be confirmed by user. Common choice is USDC but ALWAYS ask"
+            ),
           chainId: z
             .number()
-            .describe("Chain ID - REQUIRED, must be explicitly provided by user. 1=Ethereum, 42161=Arbitrum, 137=Polygon, 56=BNB, 1301=Unichain. NO DEFAULT - always ask if not specified")
+            .describe(
+              "Chain ID - REQUIRED, must be explicitly provided by user. 1=Ethereum, 42161=Arbitrum, 137=Polygon, 56=BNB. NO DEFAULT - always ask if not specified"
+            )
         }),
         execute: async ({ fromToken, toToken, chainId }) => {
           try {
@@ -247,7 +280,12 @@ Be conversational, helpful, and ALWAYS prioritize accuracy over speed.`,
             const normalizedTo = normalizeTokenSymbol(toToken, chainId);
             const chainName = getChainName(chainId);
 
-            const price = await getSushiSwapPrice(normalizedFrom, normalizedTo, undefined, chainId);
+            const price = await getSushiSwapPrice(
+              normalizedFrom,
+              normalizedTo,
+              undefined,
+              chainId
+            );
 
             return {
               success: true,
