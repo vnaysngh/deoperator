@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { JetBrains_Mono } from "next/font/google";
 import "./global.css";
+import "@rainbow-me/rainbowkit/styles.css";
 import { Providers } from "@/components/Providers";
 
 const jetbrains = JetBrains_Mono({

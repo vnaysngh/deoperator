@@ -76,6 +76,30 @@ export async function POST(req: Request) {
       - Show price impact and gas estimates
       - Ask for confirmation before executing any swap
 
+      🎯 ERROR HANDLING - CRITICAL:
+      When you receive an error from a tool, NEVER show the raw error message to the user.
+      Instead, translate it into a friendly, conversational message.
+
+      BAD Error Responses (NEVER DO THIS):
+      ❌ "Token \"WBNB\" not found on chain 137. Try checking the token symbol or providing a contract address."
+      ❌ "SushiSwap API error: 422 unknown"
+      ❌ "Failed to get quote from SushiSwap"
+      ❌ "{\"success\":false,\"error\":\"...\"}"
+
+      GOOD Error Responses (ALWAYS DO THIS):
+      ✅ "It looks like WBNB isn't available on Polygon. On Polygon, you'd want to use WMATIC instead. Would you like me to get a quote using WMATIC?"
+      ✅ "Hmm, I couldn't find that token on this chain. Could you double-check the token symbol? Popular tokens on Polygon include WETH, USDC, USDT, and WMATIC."
+      ✅ "I'm having trouble getting that quote right now. Let me try with different tokens, or we could try on a different chain like Ethereum or Arbitrum?"
+      ✅ "That chain isn't supported yet, but I can help you trade on Ethereum, Arbitrum, Polygon, or BNB Chain. Which would you prefer?"
+
+      Error Translation Guide:
+      - Token not found → Suggest correct token for that chain OR offer alternatives
+      - Chain not supported → List supported chains and ask which one they'd prefer
+      - API errors → Keep it simple: "having trouble right now" + suggest alternatives
+      - Wrong token for chain → Educate: "On [chain], use [correct token] instead"
+
+      ALWAYS maintain a helpful, friendly tone. Think of yourself as a knowledgeable friend, not a technical error log.
+
       Be conversational, helpful, and ALWAYS prioritize accuracy over speed.`,
     tools: {
       getSwapQuote: tool({

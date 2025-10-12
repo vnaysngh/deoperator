@@ -1,54 +1,38 @@
-import { http, createConfig } from 'wagmi'
-import { mainnet, sepolia } from 'wagmi/chains'
-import { injected, walletConnect } from 'wagmi/connectors'
+import { getDefaultConfig } from '@rainbow-me/rainbowkit'
+import { mainnet, sepolia, arbitrum, polygon, bsc } from 'wagmi/chains'
+import { defineChain } from 'viem'
+
+// Define Unichain mainnet
+const unichain = defineChain({
+  id: 130,
+  name: 'Unichain',
+  nativeCurrency: {
+    decimals: 18,
+    name: 'Ether',
+    symbol: 'ETH',
+  },
+  rpcUrls: {
+    default: {
+      http: ['https://rpc.unichain.org'],
+    },
+  },
+  blockExplorers: {
+    default: {
+      name: 'Uniscan',
+      url: 'https://uniscan.xyz',
+    },
+  },
+})
 
 const projectId = process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID || ''
 
-// Metadata for WalletConnect
-const metadata = {
-  name: 'UniPilot',
-  description: 'AI-Powered Uniswap Trading',
-  url: typeof window !== 'undefined' ? window.location.origin : 'https://unipilot.app',
-  icons: ['https://avatars.githubusercontent.com/u/37784886']
+if (!projectId) {
+  console.warn('WalletConnect Project ID is missing. Please add NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID to your .env.local file.')
 }
 
-// Get connectors safely - only on client side
-function getConnectors() {
-  const connectors = []
-
-  // Only add injected connector if we're in a browser environment
-  if (typeof window !== 'undefined') {
-    try {
-      connectors.push(injected())
-    } catch (error) {
-      console.warn('Failed to initialize injected connector:', error)
-    }
-  }
-
-  // Add WalletConnect if project ID is available
-  if (projectId) {
-    try {
-      connectors.push(
-        walletConnect({
-          projectId,
-          metadata,
-          showQrModal: true,
-        })
-      )
-    } catch (error) {
-      console.warn('Failed to initialize WalletConnect connector:', error)
-    }
-  }
-
-  return connectors
-}
-
-export const config = createConfig({
-  chains: [mainnet, sepolia],
-  connectors: getConnectors(),
-  transports: {
-    [mainnet.id]: http(process.env.NEXT_PUBLIC_RPC_URL),
-    [sepolia.id]: http(),
-  },
+export const config = getDefaultConfig({
+  appName: 'UniPilot',
+  projectId,
+  chains: [mainnet, arbitrum, polygon, bsc, unichain, sepolia],
   ssr: true,
 })

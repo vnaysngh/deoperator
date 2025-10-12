@@ -37,7 +37,7 @@ export function Chat({ walletAddress }: ChatProps) {
   }, [messages, walletAddress, status]);
 
   return (
-    <div className="bg-black rounded-2xl overflow-hidden shadow-2xl">
+    <div className="bg-black rounded-2xl overflow-hidden shadow-2xl flex flex-col max-h-[80vh]">
       {/* Header */}
       {/*  <div className="px-6 py-4">
         <div className="flex items-center justify-between">
@@ -57,7 +57,7 @@ export function Chat({ walletAddress }: ChatProps) {
       </div> */}
 
       {/* Messages */}
-      <div className="h-[500px] overflow-y-auto p-6 space-y-4">
+      <div className="flex-1 overflow-y-auto p-6 space-y-4 min-h-[500px]">
         {messages.length === 0 && (
           <div className="h-full flex flex-col items-center justify-center text-center">
             <div className="w-16 h-16 rounded-2xl bg-primary-600/20 flex items-center justify-center mb-4">
@@ -301,7 +301,7 @@ export function Chat({ walletAddress }: ChatProps) {
             setInput("");
           }
         }}
-        className="p-4"
+        className="p-4 flex-shrink-0"
       >
         <div className="flex items-center">
           <input
