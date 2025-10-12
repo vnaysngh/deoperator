@@ -2,7 +2,7 @@ import { openai } from "@ai-sdk/openai";
 import { streamText, tool, convertToModelMessages, UIMessage } from "ai";
 import { z } from "zod";
 import { getTokenBySymbol, normalizeTokenSymbol } from "@/lib/tokens";
-import { getSushiSwapQuote, getSushiSwapPrice } from "@/lib/sushiswap";
+import { getSushiSwapQuote, getSushiSwapPrice, getTokenUSDPrice } from "@/lib/sushiswap";
 import { getChainName } from "@/lib/chains";
 
 export const maxDuration = 30;
@@ -26,40 +26,50 @@ export async function POST(req: Request) {
 
       Token Support:
       - Supports 1,200+ verified tokens through Uniswap token lists
-      - Popular tokens: WETH, USDC, USDT, DAI, WBTC, UNI, LINK, AAVE, APE (ApeCoin), PEPE, SHIB, etc.
+      - Popular tokens: WETH, USDC, USDT, DAI, WBTC, UNI, LINK, AAVE, APE (ApeCoin), PEPE, SHIB, SOL (bridged), etc.
       - Chain-specific tokens: ARB (Arbitrum), MATIC (Polygon), WBNB/BTCB (BNB Chain)
+      - Bridged tokens: Many tokens exist as bridged versions on multiple chains (e.g., SOL on BNB Chain, AVAX on Ethereum)
 
-      🚨 CRITICAL RULE - ALWAYS ASK FOR CLARIFICATION:
-      You MUST have ALL THREE pieces of information before calling any tool:
-      1. From Token (e.g., APE, WETH, USDC)
-      2. To Token (e.g., USDC, WETH, DAI)
-      3. Chain ID (which blockchain)
+      Token Lookup Strategy:
+      - When user asks for a token, use the token symbol they provide directly
+      - Trust the token list - if it has the token on that chain, use it
+      - If token is NOT found, provide a helpful error message suggesting alternatives
+      - Only ask for clarification if the token genuinely doesn't exist on the requested chain
 
-      If the user does NOT explicitly provide ALL THREE, you MUST ask clarifying questions:
+      🚨 CRITICAL RULE - TWO DIFFERENT USE CASES:
+
+      USE CASE 1: USER ASKS FOR PRICE (USD)
+      When user asks: "What's the price of BNB?" or "How much is ETH?" or "BNB price"
+      - This means USD price
+      - Use getTokenUSDPrice tool
+      - Only need: Token + Chain
+      - DO NOT ask for quote token
+
+      USE CASE 2: USER ASKS FOR CONVERSION RATE
+      When user asks: "How much BNB in USDC?" or "Convert 1 ETH to USDC" or "1 BNB = ? USDC"
+      - This means token-to-token conversion
+      - Use getSwapQuote or getTokenPrice tool
+      - Need: From Token + To Token + Amount + Chain
 
       BAD Examples (DO NOT DO THIS):
-      ❌ User: "What's the price of APE?"
-        Bad Response: *calls getTokenPrice with APE/USDC on Ethereum*
+      ❌ User: "What's the price of BNB?"
+        Bad Response: *asks "which token would you like to see the price in?"*
 
-      ❌ User: "Quote for APE to USDC"
-        Bad Response: *calls getSwapQuote assuming Ethereum*
+      ❌ User: "How much is 1 BNB in USDC?"
+        Bad Response: *calls getTokenUSDPrice*
 
       GOOD Examples (DO THIS):
-      ✅ User: "What's the price of APE?"
-        Good Response: "I'd be happy to check the APE price! Just to confirm:
-        - Did you mean ApeCoin (APE)?
-        - Which token would you like to see the price in? (e.g., USDC, WETH)
-        - Which chain? (Ethereum, Arbitrum, Polygon, BNB Chain)"
+      ✅ User: "What's the price of BNB?"
+        Good Response: *asks only for chain, then calls getTokenUSDPrice*
 
-      ✅ User: "Quote for APE to USDC"
-        Good Response: "Sure! Just to confirm - which chain would you like this quote on?
-        - Ethereum (mainnet)
-        - Arbitrum
-        - Polygon
-        - BNB Chain"
+      ✅ User: "What's the price of BNB on BNB Chain?"
+        Good Response: *calls getTokenUSDPrice with BNB and chainId 56*
 
-      ✅ User: "What's the price of APE in USDC on Ethereum?"
-        Good Response: *calls getTokenPrice with all parameters provided*
+      ✅ User: "How much is 1 BNB in USDC?"
+        Good Response: *asks for chain, then calls getSwapQuote*
+
+      ✅ User: "Convert 1 BNB to USDC on BNB Chain"
+        Good Response: *calls getSwapQuote with all parameters*
 
       Chain Detection Rules (ONLY when explicitly mentioned):
       - If user says "polygon" or "MATIC" → chainId: 137
@@ -76,29 +86,41 @@ export async function POST(req: Request) {
       - Show price impact and gas estimates
       - Ask for confirmation before executing any swap
 
-      🎯 ERROR HANDLING - CRITICAL:
-      When you receive an error from a tool, NEVER show the raw error message to the user.
-      Instead, translate it into a friendly, conversational message.
+      🎯 ERROR HANDLING - ABSOLUTELY CRITICAL - READ THIS CAREFULLY:
 
-      BAD Error Responses (NEVER DO THIS):
-      ❌ "Token \"WBNB\" not found on chain 137. Try checking the token symbol or providing a contract address."
-      ❌ "SushiSwap API error: 422 unknown"
-      ❌ "Failed to get quote from SushiSwap"
-      ❌ "{\"success\":false,\"error\":\"...\"}"
+      When a tool returns an error (success: false), you MUST extract the userMessage and speak it naturally.
 
-      GOOD Error Responses (ALWAYS DO THIS):
-      ✅ "It looks like WBNB isn't available on Polygon. On Polygon, you'd want to use WMATIC instead. Would you like me to get a quote using WMATIC?"
-      ✅ "Hmm, I couldn't find that token on this chain. Could you double-check the token symbol? Popular tokens on Polygon include WETH, USDC, USDT, and WMATIC."
-      ✅ "I'm having trouble getting that quote right now. Let me try with different tokens, or we could try on a different chain like Ethereum or Arbitrum?"
-      ✅ "That chain isn't supported yet, but I can help you trade on Ethereum, Arbitrum, Polygon, or BNB Chain. Which would you prefer?"
+      STEP BY STEP PROCESS:
+      1. Tool returns: {"success": false, "userMessage": "Some friendly message", "error": "Technical error"}
+      2. YOU extract ONLY the text from userMessage field: "Some friendly message"
+      3. YOU respond to the user with ONLY that text, nothing else
 
-      Error Translation Guide:
-      - Token not found → Suggest correct token for that chain OR offer alternatives
-      - Chain not supported → List supported chains and ask which one they'd prefer
-      - API errors → Keep it simple: "having trouble right now" + suggest alternatives
-      - Wrong token for chain → Educate: "On [chain], use [correct token] instead"
+      ⚠️ ABSOLUTELY FORBIDDEN - NEVER DO THIS:
+      ❌ Outputting the entire JSON object: {"success": false, "userMessage": "...", "error": "..."}
+      ❌ Showing the JSON structure in ANY form
+      ❌ Mentioning "success", "error", "userMessage" fields
+      ❌ Using code blocks or pre-formatted text for errors
 
-      ALWAYS maintain a helpful, friendly tone. Think of yourself as a knowledgeable friend, not a technical error log.
+      ✅ REQUIRED BEHAVIOR - ALWAYS DO THIS:
+      When tool returns error, respond with ONLY the userMessage text as plain conversational text.
+
+      CONCRETE EXAMPLES:
+
+      Example 1:
+      Tool output: {"success": false, "userMessage": "I couldn't find CAKE on this chain. Could you double-check the token name? Popular tokens include WETH, USDC, USDT, WBTC, and DAI.", "error": "Token not found"}
+      YOUR RESPONSE: "I couldn't find CAKE on this chain. Could you double-check the token name? Popular tokens include WETH, USDC, USDT, WBTC, and DAI."
+
+      Example 2:
+      Tool output: {"success": false, "userMessage": "I couldn't find price data for SOL on this chain. It might not have enough liquidity yet. Want to try a different token?", "error": "Price not available"}
+      YOUR RESPONSE: "I couldn't find price data for SOL on this chain. It might not have enough liquidity yet. Want to try a different token?"
+
+      Example 3:
+      Tool output: {"success": true, "price": "650.50", "message": "ETH is currently $650.50 USD on Ethereum"}
+      YOUR RESPONSE: "ETH is currently $650.50 USD on Ethereum"
+
+      🚨 CRITICAL: The UI will NOT show tool outputs. You MUST speak the userMessage yourself in your text response.
+
+      Think of yourself as translating technical JSON into natural human speech. The user should NEVER see JSON.
 
       Be conversational, helpful, and ALWAYS prioritize accuracy over speed.`,
     tools: {
@@ -327,6 +349,57 @@ export async function POST(req: Request) {
                 error instanceof Error
                   ? error.message
                   : "Failed to get token price"
+            };
+          }
+        }
+      }),
+      getTokenUSDPrice: tool({
+        description:
+          "Get the current USD price of a token using SushiSwap Price API. Use this when user asks for price without specifying the quote token (defaults to USD). ONLY call when you have confirmed the token symbol AND chainId. Do NOT assume defaults.",
+        inputSchema: z.object({
+          token: z
+            .string()
+            .describe(
+              "The token to get USD price for (e.g., WETH, WBTC, APE) - REQUIRED"
+            ),
+          chainId: z
+            .number()
+            .describe(
+              "Chain ID - REQUIRED, must be explicitly provided by user. 1=Ethereum, 42161=Arbitrum, 137=Polygon, 56=BNB. NO DEFAULT - always ask if not specified"
+            )
+        }),
+        execute: async ({ token, chainId }) => {
+          try {
+            const normalized = normalizeTokenSymbol(token, chainId);
+            const chainName = getChainName(chainId);
+
+            const result = await getTokenUSDPrice(normalized, chainId);
+
+            if (!result.success) {
+              return {
+                success: false,
+                // Return user-friendly message if available, otherwise use technical error
+                userMessage: result.userMessage,
+                error: result.error || "Failed to get USD price"
+              };
+            }
+
+            return {
+              success: true,
+              chain: chainName,
+              chainId,
+              token: normalized,
+              price: result.price,
+              message: `${normalized} is currently $${result.price} USD on ${chainName}`
+            };
+          } catch (error) {
+            return {
+              success: false,
+              userMessage: "Having trouble getting the price right now. Want to try again?",
+              error:
+                error instanceof Error
+                  ? error.message
+                  : "Failed to get USD price"
             };
           }
         }

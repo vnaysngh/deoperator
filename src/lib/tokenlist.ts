@@ -14,6 +14,9 @@ const TOKEN_LIST_SOURCES = {
   // Chains: Ethereum (1), Optimism (10), BNB (56), Polygon (137), Arbitrum (42161), Base (8453), Avalanche (43114), etc.
   UNISWAP: 'https://tokens.uniswap.org',
 
+  // PancakeSwap token list - BNB Chain specific tokens including CAKE
+  PANCAKESWAP: 'https://tokens.pancakeswap.finance/pancakeswap-extended.json',
+
   // CoinGecko as fallback (only supports Ethereum mainnet)
   COINGECKO: 'https://tokens.coingecko.com/uniswap/all.json',
 };
@@ -66,7 +69,7 @@ async function fetchTokenList(url: string): Promise<TokenList> {
 }
 
 /**
- * Get token list with caching
+ * Get token list with caching - merges multiple sources
  */
 export async function getTokenList(): Promise<TokenList> {
   // Return cached version if still valid
@@ -75,30 +78,61 @@ export async function getTokenList(): Promise<TokenList> {
     return tokenListCache;
   }
 
-  // Try primary source (Uniswap - supports 20+ chains)
-  try {
-    console.log('Fetching token list from Uniswap Labs...');
-    const list = await fetchTokenList(TOKEN_LIST_SOURCES.UNISWAP);
-    tokenListCache = list;
-    cacheTimestamp = now;
-    console.log(`✓ Loaded ${list.tokens.length} tokens from Uniswap`);
-    return list;
-  } catch (error) {
-    console.warn('Uniswap token list failed, trying CoinGecko...', error);
+  const mergedTokens: TokenInfo[] = [];
+  const seenTokens = new Set<string>(); // Track by chainId:address
+
+  // Fetch from all sources and merge
+  const sources = [
+    { name: 'Uniswap', url: TOKEN_LIST_SOURCES.UNISWAP },
+    { name: 'PancakeSwap', url: TOKEN_LIST_SOURCES.PANCAKESWAP },
+  ];
+
+  for (const source of sources) {
+    try {
+      console.log(`Fetching token list from ${source.name}...`);
+      const list = await fetchTokenList(source.url);
+
+      // Add unique tokens
+      for (const token of list.tokens) {
+        const key = `${token.chainId}:${token.address.toLowerCase()}`;
+        if (!seenTokens.has(key)) {
+          seenTokens.add(key);
+          mergedTokens.push(token);
+        }
+      }
+
+      console.log(`✓ Added ${list.tokens.length} tokens from ${source.name}`);
+    } catch (error) {
+      console.warn(`${source.name} token list failed:`, error);
+    }
   }
 
-  // Try fallback (CoinGecko - only Ethereum mainnet)
-  try {
-    console.log('Fetching token list from CoinGecko...');
-    const list = await fetchTokenList(TOKEN_LIST_SOURCES.COINGECKO);
-    tokenListCache = list;
-    cacheTimestamp = now;
-    console.log(`✓ Loaded ${list.tokens.length} tokens from CoinGecko (Ethereum only)`);
-    return list;
-  } catch (error) {
-    console.error('All token list sources failed:', error);
-    throw new Error('Failed to fetch token list from all sources');
+  if (mergedTokens.length === 0) {
+    // Last resort: try CoinGecko
+    try {
+      console.log('Trying CoinGecko as last resort...');
+      const list = await fetchTokenList(TOKEN_LIST_SOURCES.COINGECKO);
+      mergedTokens.push(...list.tokens);
+      console.log(`✓ Loaded ${list.tokens.length} tokens from CoinGecko`);
+    } catch (error) {
+      console.error('All token list sources failed:', error);
+      throw new Error('Failed to fetch token list from all sources');
+    }
   }
+
+  // Create merged token list
+  const mergedList: TokenList = {
+    name: 'Merged Token List',
+    timestamp: new Date().toISOString(),
+    version: { major: 1, minor: 0, patch: 0 },
+    tokens: mergedTokens,
+  };
+
+  tokenListCache = mergedList;
+  cacheTimestamp = now;
+  console.log(`✓ Total merged tokens: ${mergedTokens.length}`);
+
+  return mergedList;
 }
 
 /**
@@ -116,6 +150,7 @@ export async function searchTokenBySymbol(symbol: string): Promise<TokenInfo[]> 
 
 /**
  * Search for a token by symbol on a specific chain
+ * Returns the first exact match by symbol
  */
 export async function searchTokenBySymbolAndChain(
   symbol: string,
@@ -124,11 +159,38 @@ export async function searchTokenBySymbolAndChain(
   const tokenList = await getTokenList();
   const upperSymbol = symbol.toUpperCase();
 
-  const token = tokenList.tokens.find(
+  // Find ALL tokens with matching symbol on this chain
+  const matches = tokenList.tokens.filter(
     token => token.symbol.toUpperCase() === upperSymbol && token.chainId === chainId
   );
 
-  return token || null;
+  if (matches.length === 0) {
+    return null;
+  }
+
+  if (matches.length === 1) {
+    return matches[0];
+  }
+
+  // Multiple matches - try to find the most canonical one
+  // Prefer tokens without "Wormhole", "Bridge", "Portal" in name
+  const canonical = matches.find(
+    token =>
+      !token.name.toLowerCase().includes('wormhole') &&
+      !token.name.toLowerCase().includes('bridge') &&
+      !token.name.toLowerCase().includes('portal') &&
+      !token.name.toLowerCase().includes('(old)') &&
+      !token.name.toLowerCase().includes('deprecated')
+  );
+
+  if (canonical) {
+    console.log(`✓ Found canonical ${upperSymbol}: ${canonical.name} (${canonical.address})`);
+    return canonical;
+  }
+
+  // If all are bridge tokens, just return the first one
+  console.log(`⚠️  Multiple ${upperSymbol} tokens found on chain ${chainId}, using first: ${matches[0].name}`);
+  return matches[0];
 }
 
 /**
@@ -146,12 +208,15 @@ export function toUniswapToken(tokenInfo: TokenInfo): Token {
 
 /**
  * Search and return Uniswap SDK Token
+ * Simply returns the token if found on the requested chain
  */
 export async function findToken(
   symbol: string,
   chainId: number
 ): Promise<Token | null> {
-  const tokenInfo = await searchTokenBySymbolAndChain(symbol, chainId);
+  const upperSymbol = symbol.toUpperCase();
+
+  const tokenInfo = await searchTokenBySymbolAndChain(upperSymbol, chainId);
 
   if (!tokenInfo) {
     return null;

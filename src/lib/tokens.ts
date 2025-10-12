@@ -98,6 +98,8 @@ const CHAIN_TOKENS: Record<number, Record<string, Token>> = {
     DAI: new Token(56, '0x1AF3F329e8BE154074D8769D1FFa4eE058B1DBc3', 18, 'DAI', 'Dai Stablecoin'),
     WETH: new Token(56, '0x2170Ed0880ac9A755fd29B2688956BD959F933F8', 18, 'WETH', 'Wrapped Ether'),
     BTCB: new Token(56, '0x7130d2A12B9BCbFAe4f2634d864A1Ee1Ce3Ead9c', 18, 'BTCB', 'Bitcoin BEP2'),
+    CAKE: new Token(56, '0x0E09FaBB73Bd3Ade0a17ECC321fD13a19e81cE82', 18, 'CAKE', 'PancakeSwap Token'),
+    SOL: new Token(56, '0x570A5D26f7765Ecb712C0924E4De545B89fD43dF', 9, 'SOL', 'Solana Token'),
   },
 
   // Unichain (130) - Unichain mainnet (launched Feb 2025)

@@ -238,17 +238,14 @@ export function Chat({ walletAddress }: ChatProps) {
                           );
                         }
 
-                        // Default tool output
-                        return (
-                          <div
-                            key={index}
-                            className="mt-3 pt-3 border-t border-white/10"
-                          >
-                            <div className="text-xs glass rounded-lg p-3 font-mono text-gray-400 overflow-x-auto">
-                              <pre>{JSON.stringify(part.output, null, 2)}</pre>
-                            </div>
-                          </div>
-                        );
+                        // Check for error with userMessage
+                        if (output?.success === false && 'userMessage' in output) {
+                          // Don't render anything - the AI should handle the userMessage in its text response
+                          return null;
+                        }
+
+                        // Default tool output (only for non-error cases without special formatting)
+                        return null;
                       }
                       if (
                         part.state === "input-streaming" ||
