@@ -2,18 +2,30 @@ import { openai } from "@ai-sdk/openai";
 import { streamText, tool, convertToModelMessages, UIMessage } from "ai";
 import { z } from "zod";
 import { getTokenBySymbol, normalizeTokenSymbol } from "@/lib/tokens";
-import { getSushiSwapQuote, getSushiSwapPrice, getTokenUSDPrice } from "@/lib/sushiswap";
+import {
+  getSushiSwapQuote,
+  getSushiSwapPrice,
+  getTokenUSDPrice,
+  getSushiSwapTransaction
+} from "@/lib/sushiswap";
 import { getChainName } from "@/lib/chains";
 
 export const maxDuration = 30;
 
 export async function POST(req: Request) {
   const { messages }: { messages: UIMessage[] } = await req.json();
+  const walletAddress = req.headers.get("x-wallet-address") || "";
 
   const result = streamText({
     model: openai("gpt-4-turbo"),
     messages: convertToModelMessages(messages),
     system: `You are a helpful multi-chain SushiSwap trading assistant. You help users get quotes and swap tokens across multiple blockchains.
+
+      ${
+        walletAddress
+          ? `User's connected wallet address: ${walletAddress}`
+          : "User has not connected their wallet yet. Ask them to connect their wallet before executing swaps."
+      }
 
       🔗 SushiSwap Supported Chains (VERIFIED):
       - Ethereum (chainId: 1) ✅
@@ -80,11 +92,40 @@ export async function POST(req: Request) {
 
       NEVER assume a default chain. ALWAYS ask if not specified.
 
-      When you have all information and get a quote:
-      - Show chain name clearly
-      - Show input and output amounts
-      - Show price impact and gas estimates
-      - Ask for confirmation before executing any swap
+      🔄 SWAP EXECUTION FLOW (CRITICAL):
+
+      When user wants to swap tokens, follow this EXACT flow:
+
+      STEP 1: Gather Information
+      - If user says "swap ARB to USDC" → Ask for amount and chain
+      - If user says "swap 1 ARB to USDC" → Ask for chain
+      - If user says "swap 1 ARB to USDC on Arbitrum" → Have everything!
+
+      STEP 2: Get Quote (use getSwapQuote tool)
+      - Show the quote details clearly:
+        - Input: X TOKEN_A
+        - Output: ~Y TOKEN_B
+        - Price Impact: Z%
+        - Route: TOKEN_A → [intermediates] → TOKEN_B
+        - Gas Estimate: N
+
+      STEP 3: Ask for Confirmation
+      - ALWAYS ask: "Would you like to proceed with this swap?"
+      - Wait for user confirmation (yes/confirm/proceed)
+
+      STEP 4: Execute Swap (use executeSwap tool)
+      - ONLY call executeSwap AFTER user confirms
+      - MUST pass the user's wallet address (available in context)
+      - Returns transaction data for the frontend to execute
+      - Tell user: "Transaction prepared! Please confirm in your wallet."
+
+      Example Flow:
+      User: "swap 1 ARB to USDC on Arbitrum"
+      → You: *calls getSwapQuote*
+      → You: "I can swap 1 ARB for ~1,850 USDC on Arbitrum. Price impact: 0.02%. Would you like to proceed?"
+      User: "yes"
+      → You: *calls executeSwap with walletAddress*
+      → You: "Transaction prepared! Please confirm the swap in your wallet."
 
       🎯 ERROR HANDLING - ABSOLUTELY CRITICAL - READ THIS CAREFULLY:
 
@@ -197,66 +238,77 @@ export async function POST(req: Request) {
       }),
       executeSwap: tool({
         description:
-          "Execute a token swap on SushiSwap. This will prepare the swap transaction data that needs to be signed by the user.",
+          "Execute a token swap on SushiSwap. This prepares the actual transaction that will be sent to the blockchain. ONLY call this after: 1) User has seen the quote, 2) User has confirmed they want to proceed. REQUIRED: walletAddress parameter.",
         inputSchema: z.object({
           fromToken: z.string().describe("The token symbol to swap from"),
           toToken: z.string().describe("The token symbol to swap to"),
           amount: z.string().describe("The amount of input token to swap"),
+          walletAddress: z
+            .string()
+            .describe("User's wallet address - REQUIRED for swap execution"),
           chainId: z
+            .number()
+            .describe(
+              "Chain ID - REQUIRED. 1=Ethereum, 42161=Arbitrum, 137=Polygon, 56=BNB"
+            ),
+          slippage: z
             .number()
             .optional()
             .describe(
-              "Chain ID: 1=Ethereum, 42161=Arbitrum, 137=Polygon, 56=BNB (default: 1)"
-            ),
-          slippage: z
-            .string()
-            .optional()
-            .describe("Slippage tolerance in percentage (default: 0.5)")
+              "Slippage tolerance as decimal (e.g., 0.005 = 0.5%), default: 0.005"
+            )
         }),
         execute: async ({
           fromToken,
           toToken,
           amount,
-          chainId = 1,
-          slippage = "0.5"
+          walletAddress,
+          chainId,
+          slippage = 0.005
         }) => {
           try {
             const normalizedFrom = normalizeTokenSymbol(fromToken, chainId);
             const normalizedTo = normalizeTokenSymbol(toToken, chainId);
+            const chainName = getChainName(chainId);
 
-            const fromTokenData = await getTokenBySymbol(
+            // Get real swap transaction from SushiSwap API
+            const swapData = await getSushiSwapTransaction(
               normalizedFrom,
-              chainId
+              normalizedTo,
+              amount,
+              walletAddress,
+              chainId,
+              slippage
             );
-            const toTokenData = await getTokenBySymbol(normalizedTo, chainId);
 
-            if (!fromTokenData || !toTokenData) {
+            if (!swapData.success) {
               return {
                 success: false,
-                error: `Token not found: ${
-                  !fromTokenData ? normalizedFrom : normalizedTo
-                }`
+                userMessage: swapData.userMessage,
+                error: swapData.error || "Failed to prepare swap"
               };
             }
 
-            // Return transaction data that will be used by the frontend
+            // Return transaction data for frontend to execute
             return {
               success: true,
-              message:
-                "Swap prepared. Please confirm the transaction in your wallet.",
-              transactionData: {
-                fromToken: normalizedFrom,
-                toToken: normalizedTo,
-                amount,
-                slippage,
-                chainId,
-                fromAddress: fromTokenData.address,
-                toAddress: toTokenData.address
-              }
+              chain: chainName,
+              chainId,
+              fromToken: normalizedFrom,
+              toToken: normalizedTo,
+              inputAmount: amount,
+              outputAmount: swapData.outputAmount,
+              priceImpact: swapData.priceImpact,
+              gasEstimate: swapData.gasEstimate,
+              route: swapData.route,
+              transaction: swapData.tx, // The actual transaction to send
+              message: `Swap transaction prepared! You'll receive approximately ${swapData.outputAmount} ${normalizedTo} for ${amount} ${normalizedFrom} on ${chainName}.`
             };
           } catch (error) {
             return {
               success: false,
+              userMessage:
+                "Something went wrong while preparing the swap. Want to try again?",
               error:
                 error instanceof Error
                   ? error.message
@@ -395,7 +447,8 @@ export async function POST(req: Request) {
           } catch (error) {
             return {
               success: false,
-              userMessage: "Having trouble getting the price right now. Want to try again?",
+              userMessage:
+                "Having trouble getting the price right now. Want to try again?",
               error:
                 error instanceof Error
                   ? error.message

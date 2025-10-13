@@ -18,7 +18,10 @@ export function Chat({ walletAddress }: ChatProps) {
   const [input, setInput] = useState("");
   const { messages, sendMessage, status } = useChat({
     transport: new DefaultChatTransport({
-      api: "/api/chat"
+      api: "/api/chat",
+      headers: {
+        "x-wallet-address": walletAddress || ""
+      }
     })
   });
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -83,13 +86,13 @@ export function Chat({ walletAddress }: ChatProps) {
             </p>
             <div className="space-y-2 text-sm text-left">
               <div className="glass rounded-lg px-4 py-2 text-gray-300">
-                &quot;Swap 1 WETH for USDC&quot;
+                &quot;Swap 1 BNB for USDC on BNB Chain&quot;
               </div>
               <div className="glass rounded-lg px-4 py-2 text-gray-300">
-                &quot;What&apos;s the price of WBTC?&quot;
+                &quot;What&apos;s the price of CAKE?&quot;
               </div>
               <div className="glass rounded-lg px-4 py-2 text-gray-300">
-                &quot;Get me a quote for 100 USDC to DAI&quot;
+                &quot;Get me a quote for 100 USDC to DAI on Arbitrum&quot;
               </div>
               <div className="glass rounded-lg px-4 py-2 text-gray-300">
                 &quot;Show me the best rate for 0.5 ETH to USDT&quot;
