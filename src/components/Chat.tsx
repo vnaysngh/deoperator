@@ -630,12 +630,20 @@ function CreateOrderButton({
       console.log("[CLIENT] Calling postSwapOrderFromQuote...");
 
       setOrderStatus("signing");
-      const id = await postSwapOrderFromQuote();
+      const orderResult = await postSwapOrderFromQuote();
 
       setOrderStatus("submitting");
-      console.log("[CLIENT] Order submitted!", id);
 
-      setOrderId(id);
+      // Extract orderId - it can be a string or an object
+      const extractedOrderId =
+        typeof orderResult === "string"
+          ? orderResult
+          : (orderResult as { orderId?: string })?.orderId ||
+            String(orderResult);
+
+      console.log("[CLIENT] Order submitted!", extractedOrderId);
+
+      setOrderId(extractedOrderId);
       setOrderStatus("success");
     } catch (err) {
       console.error("[CLIENT] Order submission error:", err);

@@ -161,15 +161,21 @@ export async function quoteAndSubmitSwap(
   console.log("[CLIENT SDK] Submitting order via Trading SDK...");
   const orderResult = await postSwapOrderFromQuote();
 
+  // Extract orderId - it can be a string or an object
+  const orderId =
+    typeof orderResult === "string"
+      ? orderResult
+      : orderResult.orderId || String(orderResult);
+
   console.log("[CLIENT SDK] Order submitted successfully!");
-  console.log("[CLIENT SDK] Order ID:", orderResult.orderId);
+  console.log("[CLIENT SDK] Order ID:", orderId);
   console.log(
     "[CLIENT SDK] Explorer:",
-    `https://explorer.cow.fi/orders/${orderResult.orderId}?chainId=${params.chainId}`
+    `https://explorer.cow.fi/orders/${orderId}?chainId=${params.chainId}`
   );
 
   return {
-    orderId: orderResult.orderId,
+    orderId,
     quote
   };
 }
