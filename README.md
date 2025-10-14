@@ -33,7 +33,7 @@ A modern, AI-powered interface for trading on Uniswap using natural language. Bu
 
 ```bash
 git clone <your-repo-url>
-cd unipilot
+cd dexluthor
 npm install
 ```
 
@@ -83,7 +83,7 @@ Open [http://localhost:3000](http://localhost:3000) in your browser.
 ## Project Structure
 
 ```
-unipilot/
+dexluthor/
 ├── src/
 │   ├── app/
 │   │   ├── api/
@@ -108,6 +108,7 @@ unipilot/
 ## Key Components
 
 ### AI Chat API (`src/app/api/chat/route.ts`)
+
 - Handles natural language processing with GPT-4
 - Implements tool calling for:
   - `getSwapQuote`: Fetches price quotes from Uniswap
@@ -115,11 +116,13 @@ unipilot/
   - `getTokenInfo`: Returns token details
 
 ### Uniswap Integration (`src/lib/uniswap.ts`)
+
 - `getSwapQuote()`: Uses AlphaRouter to find optimal swap routes
 - `executeSwap()`: Executes token swaps via Uniswap V3 Router
 - `getTokenBalance()`: Queries ERC20 token balances
 
 ### Chat UI (`src/components/Chat.tsx`)
+
 - Built with Vercel AI SDK's `useChat` hook
 - Real-time message streaming
 - Tool invocation display
@@ -135,6 +138,7 @@ To switch networks, update `NEXT_PUBLIC_CHAIN_ID` in `.env.local` and add corres
 ## Supported Tokens
 
 **Mainnet:**
+
 - WETH (Wrapped Ether)
 - USDC (USD Coin)
 - USDT (Tether USD)
@@ -143,6 +147,7 @@ To switch networks, update `NEXT_PUBLIC_CHAIN_ID` in `.env.local` and add corres
 - UNI (Uniswap)
 
 **Sepolia:**
+
 - WETH (Wrapped Ether)
 - USDC (USD Coin)
 
@@ -177,16 +182,19 @@ npm run lint
 ## Troubleshooting
 
 ### "No route found" error
+
 - Ensure sufficient liquidity exists for the token pair
 - Try a smaller trade amount
 - Check that you're using supported tokens
 
 ### Wallet connection issues
+
 - Clear browser cache and cookies
 - Try a different wallet connector
 - Ensure your wallet is on the correct network
 
 ### Transaction failures
+
 - Check you have enough ETH for gas fees
 - Verify token approval was successful
 - Ensure sufficient token balance

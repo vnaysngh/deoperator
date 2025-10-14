@@ -12,7 +12,7 @@ const jetbrains = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "UniPilot | AI-Powered Uniswap Trading",
+  title: "DexLuthor | AI-Powered Uniswap Trading",
   description:
     "Trade tokens on Uniswap using natural language with AI assistance"
 };

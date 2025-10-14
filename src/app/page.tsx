@@ -90,7 +90,7 @@ export default function Home() {
               {/* <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-primary-600 to-primary-700 flex items-center justify-center shadow-glow">
                 <span className="text-white font-bold text-lg">U</span>
               </div> */}
-              <div className="text-xl font-bold gradient-text">UniPilot</div>
+              <div className="text-xl font-bold gradient-text">DexLuthor</div>
             </div>
             <WalletConnect />
           </div>

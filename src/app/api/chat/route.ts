@@ -2,12 +2,8 @@ import { openai } from "@ai-sdk/openai";
 import { streamText, tool, convertToModelMessages, UIMessage } from "ai";
 import { z } from "zod";
 import { getTokenBySymbol, normalizeTokenSymbol } from "@/lib/tokens";
-import {
-  getSushiSwapQuote,
-  getSushiSwapPrice,
-  getTokenUSDPrice,
-  getSushiSwapTransaction
-} from "@/lib/sushiswap";
+import { getTokenUSDPrice } from "@/lib/sushiswap";
+import { getCowSwapQuote, createCowSwapOrder } from "@/lib/cowswap";
 import { getChainName } from "@/lib/chains";
 
 export const maxDuration = 30;
@@ -19,22 +15,20 @@ export async function POST(req: Request) {
   const result = streamText({
     model: openai("gpt-4-turbo"),
     messages: convertToModelMessages(messages),
-    system: `You are a helpful multi-chain SushiSwap trading assistant. You help users get quotes and swap tokens across multiple blockchains.
+    system: `You are a helpful multi-chain trading assistant powered by CoW Protocol. You help users get quotes and create orders for token swaps using intent-based trading across multiple blockchains.
 
       ${
         walletAddress
           ? `User's connected wallet address: ${walletAddress}`
-          : "User has not connected their wallet yet. Ask them to connect their wallet before executing swaps."
+          : "User has not connected their wallet yet. Ask them to connect their wallet before creating orders."
       }
 
-      🔗 SushiSwap Supported Chains (VERIFIED):
-      - Ethereum (chainId: 1) ✅
+      🔗 Supported Chains:
       - Arbitrum (chainId: 42161) ✅
-      - Polygon (chainId: 137) ✅
       - BNB Chain (chainId: 56) ✅
 
-      ⚠️ Currently NOT Supported by SushiSwap:
-      - Unichain (chainId: 130) - Coming soon! Suggest users try Ethereum, Arbitrum, Polygon, or BNB Chain instead.
+      ⚠️ Currently NOT Supported:
+      - Ethereum, Polygon, Unichain - Coming soon! Currently only Arbitrum and BNB Chain are supported.
 
       Token Support:
       - Supports 1,200+ verified tokens through Uniswap token lists
@@ -51,16 +45,16 @@ export async function POST(req: Request) {
       🚨 CRITICAL RULE - TWO DIFFERENT USE CASES:
 
       USE CASE 1: USER ASKS FOR PRICE (USD)
-      When user asks: "What's the price of BNB?" or "How much is ETH?" or "BNB price"
+      When user asks: "What's the price of ARB?" or "How much is ETH?" or "ARB price"
       - This means USD price
       - Use getTokenUSDPrice tool
       - Only need: Token + Chain
       - DO NOT ask for quote token
 
-      USE CASE 2: USER ASKS FOR CONVERSION RATE
-      When user asks: "How much BNB in USDC?" or "Convert 1 ETH to USDC" or "1 BNB = ? USDC"
-      - This means token-to-token conversion
-      - Use getSwapQuote or getTokenPrice tool
+      USE CASE 2: USER ASKS FOR SWAP QUOTE
+      When user asks: "How much ARB in USDC?" or "Swap 10 ARB to USDC" or "10 ARB = ? USDC"
+      - This means token-to-token swap quote
+      - Use getSwapQuote tool
       - Need: From Token + To Token + Amount + Chain
 
       BAD Examples (DO NOT DO THIS):
@@ -84,48 +78,50 @@ export async function POST(req: Request) {
         Good Response: *calls getSwapQuote with all parameters*
 
       Chain Detection Rules (ONLY when explicitly mentioned):
-      - If user says "polygon" or "MATIC" → chainId: 137
       - If user says "arbitrum" or "ARB" → chainId: 42161
       - If user says "bnb" or "bsc" or "binance" → chainId: 56
-      - If user says "ethereum" or "mainnet" or "eth" → chainId: 1
-      - If user says "unichain" → Politely explain it's not yet supported, suggest alternatives
+      - If user says "ethereum", "polygon", "unichain" → Politely explain it's not yet supported, suggest Arbitrum or BNB Chain
 
       NEVER assume a default chain. ALWAYS ask if not specified.
 
-      🔄 SWAP EXECUTION FLOW (CRITICAL):
+      🔄 ORDER CREATION FLOW (CRITICAL):
 
       When user wants to swap tokens, follow this EXACT flow:
 
       STEP 1: Gather Information
       - If user says "swap ARB to USDC" → Ask for amount and chain
-      - If user says "swap 1 ARB to USDC" → Ask for chain
-      - If user says "swap 1 ARB to USDC on Arbitrum" → Have everything!
+      - If user says "swap 10 ARB to USDC" → Ask for chain
+      - If user says "swap 10 ARB to USDC on Arbitrum" → Have everything!
 
       STEP 2: Get Quote (use getSwapQuote tool)
       - Show the quote details clearly:
         - Input: X TOKEN_A
         - Output: ~Y TOKEN_B
-        - Price Impact: Z%
-        - Route: TOKEN_A → [intermediates] → TOKEN_B
-        - Gas Estimate: N
+        - Fee: Z TOKEN_A
+        - Price Impact: %
+        - Route: TOKEN_A → [CoW Protocol Batch Auction] → TOKEN_B
+        - Gas Estimate: Often subsidized
+      - ALWAYS show a "Create Order" button with the quote
+      - The button text should be "Create Order" not "Swap Now"
 
-      STEP 3: Ask for Confirmation
-      - ALWAYS ask: "Would you like to proceed with this swap?"
-      - Wait for user confirmation (yes/confirm/proceed)
+      STEP 3: User clicks "Create Order" button or confirms
+      - User will either click the "Create Order" button shown with the quote OR say "yes/confirm/proceed/create order"
+      - The UI button will handle wallet connection checking automatically
 
-      STEP 4: Execute Swap (use executeSwap tool)
-      - ONLY call executeSwap AFTER user confirms
-      - MUST pass the user's wallet address (available in context)
-      - Returns transaction data for the frontend to execute
-      - Tell user: "Transaction prepared! Please confirm in your wallet."
+      STEP 4: Create Order (use createOrder tool) - when user explicitly confirms
+      - ONLY call createOrder AFTER user confirms (either via button click message or verbal confirmation)
+      - The user's wallet address is AUTOMATICALLY provided from the connected wallet (DO NOT ask for it, DO NOT include it as a parameter)
+      - Returns order data that needs to be signed by the user's wallet
+      - Tell user: "Order created! Please sign the order in your wallet to submit it to CoW Protocol."
+      - Explain that the order will be executed in the next batch auction at the best available price
 
       Example Flow:
-      User: "swap 1 ARB to USDC on Arbitrum"
+      User: "swap 10 ARB to USDC on Arbitrum"
       → You: *calls getSwapQuote*
-      → You: "I can swap 1 ARB for ~1,850 USDC on Arbitrum. Price impact: 0.02%. Would you like to proceed?"
-      User: "yes"
-      → You: *calls executeSwap with walletAddress*
-      → You: "Transaction prepared! Please confirm the swap in your wallet."
+      → You: "I can swap 10 ARB for ~3.31 USDC on Arbitrum. Fee: ~0.08 ARB. Price impact: < 0.01%. Would you like to create an order?"
+      User: "yes" (or clicks "Create Order" button)
+      → You: *calls createOrder (wallet address is automatic)*
+      → You: "Order created! Please sign the order in your wallet to submit it to CoW Protocol. Your swap will be executed in the next batch auction."
 
       🎯 ERROR HANDLING - ABSOLUTELY CRITICAL - READ THIS CAREFULLY:
 
@@ -167,12 +163,12 @@ export async function POST(req: Request) {
     tools: {
       getSwapQuote: tool({
         description:
-          "Get a real-time quote for swapping tokens on SushiSwap. ONLY call this when you have confirmed: fromToken, toToken, amount, AND chainId with the user. Do NOT assume defaults.",
+          "Get a real-time quote for swapping tokens using CoW Protocol. ONLY call this when you have confirmed: fromToken, toToken, amount, AND chainId with the user. Do NOT assume defaults. Only supports Arbitrum (42161) and BNB Chain (56).",
         inputSchema: z.object({
           fromToken: z
             .string()
             .describe(
-              "The token symbol to swap from (e.g., WETH, USDC) - REQUIRED, must be confirmed by user"
+              "The token symbol to swap from (e.g., ARB, WETH, USDC) - REQUIRED, must be confirmed by user"
             ),
           toToken: z
             .string()
@@ -185,7 +181,7 @@ export async function POST(req: Request) {
           chainId: z
             .number()
             .describe(
-              "Chain ID - REQUIRED, must be explicitly provided by user. 1=Ethereum, 42161=Arbitrum, 137=Polygon, 56=BNB. NO DEFAULT - always ask if not specified"
+              "Chain ID - REQUIRED, must be explicitly provided by user. 42161=Arbitrum, 56=BNB. NO DEFAULT - always ask if not specified"
             )
         }),
         execute: async ({ fromToken, toToken, amount, chainId }) => {
@@ -194,12 +190,12 @@ export async function POST(req: Request) {
             const normalizedTo = normalizeTokenSymbol(toToken, chainId);
             const chainName = getChainName(chainId);
 
-            // Get real-time quote from SushiSwap API (wallet address not needed for quote endpoint)
-            const quote = await getSushiSwapQuote(
+            // Get real-time quote from CoW Protocol API
+            const quote = await getCowSwapQuote(
               normalizedFrom,
               normalizedTo,
               amount,
-              undefined, // Wallet address not needed for /quote endpoint
+              walletAddress, // Optional for quote
               chainId,
               0.005 // 0.5% slippage
             );
@@ -207,7 +203,8 @@ export async function POST(req: Request) {
             if (!quote.success) {
               return {
                 success: false,
-                error: quote.error || "Failed to get quote from SushiSwap"
+                userMessage: quote.userMessage,
+                error: quote.error || "Failed to get quote from CoW Protocol"
               };
             }
 
@@ -219,15 +216,17 @@ export async function POST(req: Request) {
               toToken: normalizedTo,
               inputAmount: amount,
               estimatedOutput: quote.outputAmount,
-              priceImpact: quote.priceImpact || "N/A",
-              gasEstimate: quote.gasEstimate || "N/A",
-              route: quote.route || `${normalizedFrom} → ${normalizedTo}`,
-              routeProcessorAddress: quote.routeProcessorAddress,
-              routeProcessorArgs: quote.routeProcessorArgs
+              priceImpact: quote.priceImpact || "< 0.01%",
+              gasEstimate: quote.gasEstimate || "~Free (subsidized)",
+              route: quote.route || `${normalizedFrom} → [CoW Protocol] → ${normalizedTo}`,
+              feeAmount: quote.feeAmount,
+              quoteId: quote.quoteId,
+              validTo: quote.validTo
             };
           } catch (error) {
             return {
               success: false,
+              userMessage: "Something went wrong while getting the quote. Want to try again?",
               error:
                 error instanceof Error
                   ? error.message
@@ -236,20 +235,17 @@ export async function POST(req: Request) {
           }
         }
       }),
-      executeSwap: tool({
+      createOrder: tool({
         description:
-          "Execute a token swap on SushiSwap. This prepares the actual transaction that will be sent to the blockchain. ONLY call this after: 1) User has seen the quote, 2) User has confirmed they want to proceed. REQUIRED: walletAddress parameter.",
+          "Create an order on CoW Protocol for a token swap. This prepares the order data that will be signed by the user's wallet. ONLY call this after: 1) User has seen the quote, 2) User has confirmed they want to proceed (clicked 'Create Order' button or said yes/confirm). The wallet address is automatically provided from the connected wallet.",
         inputSchema: z.object({
           fromToken: z.string().describe("The token symbol to swap from"),
           toToken: z.string().describe("The token symbol to swap to"),
           amount: z.string().describe("The amount of input token to swap"),
-          walletAddress: z
-            .string()
-            .describe("User's wallet address - REQUIRED for swap execution"),
           chainId: z
             .number()
             .describe(
-              "Chain ID - REQUIRED. 1=Ethereum, 42161=Arbitrum, 137=Polygon, 56=BNB"
+              "Chain ID - REQUIRED. 42161=Arbitrum, 56=BNB"
             ),
           slippage: z
             .number()
@@ -262,17 +258,24 @@ export async function POST(req: Request) {
           fromToken,
           toToken,
           amount,
-          walletAddress,
           chainId,
           slippage = 0.005
         }) => {
+          // Use the wallet address from the request header
+          if (!walletAddress) {
+            return {
+              success: false,
+              userMessage: "Please connect your wallet first to create orders.",
+              error: "Wallet address not provided"
+            };
+          }
           try {
             const normalizedFrom = normalizeTokenSymbol(fromToken, chainId);
             const normalizedTo = normalizeTokenSymbol(toToken, chainId);
             const chainName = getChainName(chainId);
 
-            // Get real swap transaction from SushiSwap API
-            const swapData = await getSushiSwapTransaction(
+            // Create order using CoW Protocol API
+            const orderResult = await createCowSwapOrder(
               normalizedFrom,
               normalizedTo,
               amount,
@@ -281,15 +284,15 @@ export async function POST(req: Request) {
               slippage
             );
 
-            if (!swapData.success) {
+            if (!orderResult.success) {
               return {
                 success: false,
-                userMessage: swapData.userMessage,
-                error: swapData.error || "Failed to prepare swap"
+                userMessage: orderResult.userMessage,
+                error: orderResult.error || "Failed to create order"
               };
             }
 
-            // Return transaction data for frontend to execute
+            // Return order data for frontend to sign and submit
             return {
               success: true,
               chain: chainName,
@@ -297,18 +300,14 @@ export async function POST(req: Request) {
               fromToken: normalizedFrom,
               toToken: normalizedTo,
               inputAmount: amount,
-              outputAmount: swapData.outputAmount,
-              priceImpact: swapData.priceImpact,
-              gasEstimate: swapData.gasEstimate,
-              route: swapData.route,
-              transaction: swapData.tx, // The actual transaction to send
-              message: `Swap transaction prepared! You'll receive approximately ${swapData.outputAmount} ${normalizedTo} for ${amount} ${normalizedFrom} on ${chainName}.`
+              orderData: orderResult.orderData,
+              message: orderResult.message || `Order created! Please sign the order in your wallet to submit it to CoW Protocol. Your swap will be executed in the next batch auction at the best available price.`
             };
           } catch (error) {
             return {
               success: false,
               userMessage:
-                "Something went wrong while preparing the swap. Want to try again?",
+                "Something went wrong while creating the order. Want to try again?",
               error:
                 error instanceof Error
                   ? error.message
@@ -319,19 +318,19 @@ export async function POST(req: Request) {
       }),
       getTokenInfo: tool({
         description:
-          "Get information about a specific token including its address and decimals. Supports thousands of tokens across multiple chains.",
+          "Get information about a specific token including its address and decimals. Supports tokens on Arbitrum and BNB Chain.",
         inputSchema: z.object({
           symbol: z
             .string()
-            .describe("The token symbol (e.g., WETH, USDC, APE, LINK)"),
+            .describe("The token symbol (e.g., ARB, WETH, USDC, USDT)"),
           chainId: z
             .number()
             .optional()
             .describe(
-              "Chain ID: 1=Ethereum, 42161=Arbitrum, 137=Polygon, 56=BNB (default: 1)"
+              "Chain ID: 42161=Arbitrum, 56=BNB (default: 42161)"
             )
         }),
-        execute: async ({ symbol, chainId = 1 }) => {
+        execute: async ({ symbol, chainId = 42161 }) => {
           const normalized = normalizeTokenSymbol(symbol, chainId);
           const token = await getTokenBySymbol(normalized, chainId);
 
@@ -352,72 +351,19 @@ export async function POST(req: Request) {
           };
         }
       }),
-      getTokenPrice: tool({
-        description:
-          "Get the current price of a token in terms of another token using SushiSwap real-time data. ONLY call this when you have confirmed: fromToken, toToken (what to price it in), AND chainId with the user. Do NOT assume defaults.",
-        inputSchema: z.object({
-          fromToken: z
-            .string()
-            .describe(
-              "The token to get the price for (e.g., WETH, WBTC, APE) - REQUIRED, must be confirmed by user"
-            ),
-          toToken: z
-            .string()
-            .describe(
-              "The quote token to price it in (e.g., USDC, WETH, DAI) - REQUIRED, must be confirmed by user. Common choice is USDC but ALWAYS ask"
-            ),
-          chainId: z
-            .number()
-            .describe(
-              "Chain ID - REQUIRED, must be explicitly provided by user. 1=Ethereum, 42161=Arbitrum, 137=Polygon, 56=BNB. NO DEFAULT - always ask if not specified"
-            )
-        }),
-        execute: async ({ fromToken, toToken, chainId }) => {
-          try {
-            const normalizedFrom = normalizeTokenSymbol(fromToken, chainId);
-            const normalizedTo = normalizeTokenSymbol(toToken, chainId);
-            const chainName = getChainName(chainId);
-
-            const price = await getSushiSwapPrice(
-              normalizedFrom,
-              normalizedTo,
-              undefined,
-              chainId
-            );
-
-            return {
-              success: true,
-              chain: chainName,
-              chainId,
-              token: normalizedFrom,
-              quoteToken: normalizedTo,
-              price,
-              message: `1 ${normalizedFrom} = ${price} ${normalizedTo} on ${chainName}`
-            };
-          } catch (error) {
-            return {
-              success: false,
-              error:
-                error instanceof Error
-                  ? error.message
-                  : "Failed to get token price"
-            };
-          }
-        }
-      }),
       getTokenUSDPrice: tool({
         description:
-          "Get the current USD price of a token using SushiSwap Price API. Use this when user asks for price without specifying the quote token (defaults to USD). ONLY call when you have confirmed the token symbol AND chainId. Do NOT assume defaults.",
+          "Get the current USD price of a token. Use this when user asks for price without specifying the quote token (defaults to USD). ONLY call when you have confirmed the token symbol AND chainId. Do NOT assume defaults.",
         inputSchema: z.object({
           token: z
             .string()
             .describe(
-              "The token to get USD price for (e.g., WETH, WBTC, APE) - REQUIRED"
+              "The token to get USD price for (e.g., ARB, WETH, USDC) - REQUIRED"
             ),
           chainId: z
             .number()
             .describe(
-              "Chain ID - REQUIRED, must be explicitly provided by user. 1=Ethereum, 42161=Arbitrum, 137=Polygon, 56=BNB. NO DEFAULT - always ask if not specified"
+              "Chain ID - REQUIRED, must be explicitly provided by user. 42161=Arbitrum, 56=BNB. NO DEFAULT - always ask if not specified"
             )
         }),
         execute: async ({ token, chainId }) => {
