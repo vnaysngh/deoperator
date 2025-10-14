@@ -1,5 +1,5 @@
 import { getDefaultConfig } from "@rainbow-me/rainbowkit";
-import { mainnet, sepolia, arbitrum, polygon, bsc } from "wagmi/chains";
+import { arbitrum, bsc } from "wagmi/chains";
 import { defineChain } from "viem";
 
 // Define Unichain mainnet
@@ -35,6 +35,6 @@ if (!projectId) {
 export const config = getDefaultConfig({
   appName: "DexLuthor",
   projectId,
-  chains: [mainnet, arbitrum, polygon, bsc, unichain, sepolia],
+  chains: [arbitrum, bsc],
   ssr: true
 });

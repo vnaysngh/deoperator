@@ -3,9 +3,19 @@
 import { useChat } from "@ai-sdk/react";
 import { useEffect, useRef, useState } from "react";
 import { DefaultChatTransport } from "ai";
-import { useAccount, usePublicClient, useWalletClient } from "wagmi";
-import { quoteAndSubmitSwap } from "@/lib/cowswap-client";
+import {
+  useAccount,
+  usePublicClient,
+  useWalletClient,
+  useBalance
+} from "wagmi";
+import {
+  quoteAndSubmitSwap,
+  getCowProtocolAllowance,
+  approveCowProtocol
+} from "@/lib/cowswap-client";
 import type { Address } from "viem";
+import { formatUnits, parseUnits } from "viem";
 
 interface ChatProps {
   walletAddress?: string;
@@ -133,7 +143,8 @@ export function Chat({ walletAddress }: ChatProps) {
                         }
 
                         // Price display
-                        const isPrice = output?.success && output?.price && output?.message;
+                        const isPrice =
+                          output?.success && output?.price && output?.message;
                         if (isPrice) {
                           return (
                             <div
@@ -156,7 +167,10 @@ export function Chat({ walletAddress }: ChatProps) {
                         }
 
                         // Error handling
-                        if (output?.success === false && "userMessage" in output) {
+                        if (
+                          output?.success === false &&
+                          "userMessage" in output
+                        ) {
                           return null;
                         }
 
@@ -265,27 +279,25 @@ function QuoteDisplay({
       }
 
       try {
-        console.log('[CLIENT] Fetching quote with Trading SDK...');
+        console.log("[CLIENT] Fetching quote with Trading SDK...");
 
         // Import and use the client SDK
-        const { getSwapQuote } = await import('@/lib/cowswap-client');
+        const { getSwapQuote } = await import("@/lib/cowswap-client");
 
-        const quoteResponse = await getSwapQuote(
-          publicClient,
-          walletClient,
-          {
-            sellToken: tokenInfo.fromTokenAddress as Address,
-            sellTokenDecimals: tokenInfo.fromTokenDecimals,
-            buyToken: tokenInfo.toTokenAddress as Address,
-            buyTokenDecimals: tokenInfo.toTokenDecimals,
-            amount: (BigInt(tokenInfo.amount) * BigInt(10 ** tokenInfo.fromTokenDecimals)).toString(),
-            userAddress: address,
-            chainId: tokenInfo.chainId
-          }
-        );
+        const quoteResponse = await getSwapQuote(publicClient, walletClient, {
+          sellToken: tokenInfo.fromTokenAddress as Address,
+          sellTokenDecimals: tokenInfo.fromTokenDecimals,
+          buyToken: tokenInfo.toTokenAddress as Address,
+          buyTokenDecimals: tokenInfo.toTokenDecimals,
+          amount: (
+            BigInt(tokenInfo.amount) * BigInt(10 ** tokenInfo.fromTokenDecimals)
+          ).toString(),
+          userAddress: address,
+          chainId: tokenInfo.chainId
+        });
 
         if (!quoteResponse.quoteResults) {
-          throw new Error('Failed to get quote');
+          throw new Error("Failed to get quote");
         }
 
         const { amountsAndCosts } = quoteResponse.quoteResults;
@@ -293,14 +305,18 @@ function QuoteDisplay({
         const feeAmount = amountsAndCosts.costs.networkFee.amountInSellCurrency;
 
         setQuote({
-          buyAmount: (Number(buyAmount) / Math.pow(10, tokenInfo.toTokenDecimals)).toFixed(6),
-          feeAmount: (Number(feeAmount) / Math.pow(10, tokenInfo.fromTokenDecimals)).toFixed(6),
+          buyAmount: (
+            Number(buyAmount) / Math.pow(10, tokenInfo.toTokenDecimals)
+          ).toFixed(6),
+          feeAmount: (
+            Number(feeAmount) / Math.pow(10, tokenInfo.fromTokenDecimals)
+          ).toFixed(6),
           postSwapOrderFromQuote: quoteResponse.postSwapOrderFromQuote
         });
         setLoading(false);
       } catch (err) {
-        console.error('[CLIENT] Quote fetch error:', err);
-        setError(err instanceof Error ? err.message : 'Failed to get quote');
+        console.error("[CLIENT] Quote fetch error:", err);
+        setError(err instanceof Error ? err.message : "Failed to get quote");
         setLoading(false);
       }
     }
@@ -372,7 +388,8 @@ function QuoteDisplay({
         <div className="pt-2 mt-2 border-t border-white/5">
           <div className="text-gray-500 text-xs">Route</div>
           <div className="text-white text-sm">
-            {tokenInfo.fromToken} → [CoW Protocol Batch Auction] → {tokenInfo.toToken}
+            {tokenInfo.fromToken} → [CoW Protocol Batch Auction] →{" "}
+            {tokenInfo.toToken}
           </div>
         </div>
 
@@ -405,7 +422,9 @@ function OrderSubmit({
   walletClient: any;
   address?: Address;
 }) {
-  const [status, setStatus] = useState<'submitting' | 'success' | 'error'>('submitting');
+  const [status, setStatus] = useState<"submitting" | "success" | "error">(
+    "submitting"
+  );
   const [orderId, setOrderId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -413,40 +432,36 @@ function OrderSubmit({
     async function submitOrder() {
       if (!publicClient || !walletClient || !address) {
         setError("Please connect your wallet");
-        setStatus('error');
+        setStatus("error");
         return;
       }
 
       try {
-        console.log('[CLIENT] Submitting order with Trading SDK...');
+        console.log("[CLIENT] Submitting order with Trading SDK...");
 
-        const result = await quoteAndSubmitSwap(
-          publicClient,
-          walletClient,
-          {
-            sellToken: tokenInfo.fromTokenAddress as Address,
-            sellTokenDecimals: tokenInfo.fromTokenDecimals,
-            buyToken: tokenInfo.toTokenAddress as Address,
-            buyTokenDecimals: tokenInfo.toTokenDecimals,
-            amount: tokenInfo.sellAmount,
-            userAddress: address,
-            chainId: tokenInfo.chainId
-          }
-        );
+        const result = await quoteAndSubmitSwap(publicClient, walletClient, {
+          sellToken: tokenInfo.fromTokenAddress as Address,
+          sellTokenDecimals: tokenInfo.fromTokenDecimals,
+          buyToken: tokenInfo.toTokenAddress as Address,
+          buyTokenDecimals: tokenInfo.toTokenDecimals,
+          amount: tokenInfo.sellAmount,
+          userAddress: address,
+          chainId: tokenInfo.chainId
+        });
 
         setOrderId(result.orderId);
-        setStatus('success');
+        setStatus("success");
       } catch (err) {
-        console.error('[CLIENT] Order submission error:', err);
-        setError(err instanceof Error ? err.message : 'Failed to submit order');
-        setStatus('error');
+        console.error("[CLIENT] Order submission error:", err);
+        setError(err instanceof Error ? err.message : "Failed to submit order");
+        setStatus("error");
       }
     }
 
     submitOrder();
   }, [tokenInfo, publicClient, walletClient, address]);
 
-  if (status === 'submitting') {
+  if (status === "submitting") {
     return (
       <div className="mt-3 pt-3 border-t border-white/10">
         <div className="glass-strong rounded-lg p-4">
@@ -459,11 +474,13 @@ function OrderSubmit({
     );
   }
 
-  if (status === 'error') {
+  if (status === "error") {
     return (
       <div className="mt-3 pt-3 border-t border-white/10">
         <div className="glass-strong rounded-lg p-4">
-          <div className="text-red-400">{error || 'Failed to submit order'}</div>
+          <div className="text-red-400">
+            {error || "Failed to submit order"}
+          </div>
         </div>
       </div>
     );
@@ -472,7 +489,9 @@ function OrderSubmit({
   return (
     <div className="mt-3 pt-3 border-t border-white/10">
       <div className="glass-strong rounded-lg p-4">
-        <div className="text-emerald-400 font-semibold mb-2">✓ Order Submitted!</div>
+        <div className="text-emerald-400 font-semibold mb-2">
+          ✓ Order Submitted!
+        </div>
         <div className="text-sm text-gray-300 mb-2">
           Order ID: <span className="font-mono text-xs">{orderId}</span>
         </div>
@@ -491,6 +510,7 @@ function OrderSubmit({
 
 /**
  * Button that calls postSwapOrderFromQuote to submit the order
+ * Includes balance checking, approval flow, and proper error handling
  */
 function CreateOrderButton({
   tokenInfo,
@@ -500,33 +520,138 @@ function CreateOrderButton({
   tokenInfo: any;
   postSwapOrderFromQuote: () => Promise<string>;
 }) {
-  const [status, setStatus] = useState<'idle' | 'submitting' | 'success' | 'error'>('idle');
+  const [orderStatus, setOrderStatus] = useState<
+    | "idle"
+    | "checking-approval"
+    | "approving"
+    | "creating"
+    | "signing"
+    | "submitting"
+    | "success"
+    | "error"
+  >("idle");
   const [orderId, setOrderId] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [isApproved, setIsApproved] = useState(false);
+  const [isCheckingApproval, setIsCheckingApproval] = useState(true);
 
-  const handleSubmit = async () => {
-    setStatus('submitting');
-    setError(null);
+  const { address } = useAccount();
+  const publicClient = usePublicClient();
+  const { data: walletClient } = useWalletClient();
+
+  // Get balance for the sell token
+  const { data: balance, isLoading: balanceLoading } = useBalance({
+    address: address,
+    token: tokenInfo.fromTokenAddress as Address,
+    chainId: tokenInfo.chainId
+  });
+
+  // Calculate required amount in smallest unit
+  const requiredAmount = parseUnits(
+    tokenInfo.amount.toString(),
+    tokenInfo.fromTokenDecimals
+  );
+  const hasEnoughBalance = balance ? balance.value >= requiredAmount : false;
+
+  // Check approval status on mount
+  useEffect(() => {
+    async function checkApproval() {
+      if (!publicClient || !walletClient || !address) {
+        setIsCheckingApproval(false);
+        return;
+      }
+
+      try {
+        const allowance = await getCowProtocolAllowance(
+          publicClient,
+          walletClient,
+          {
+            tokenAddress: tokenInfo.fromTokenAddress as Address,
+            owner: address,
+            chainId: tokenInfo.chainId
+          }
+        );
+
+        setIsApproved(allowance >= requiredAmount);
+        setIsCheckingApproval(false);
+      } catch (err) {
+        console.error("[CLIENT] Error checking approval:", err);
+        setIsCheckingApproval(false);
+      }
+    }
+
+    checkApproval();
+  }, [
+    publicClient,
+    walletClient,
+    address,
+    tokenInfo.fromTokenAddress,
+    tokenInfo.chainId,
+    requiredAmount
+  ]);
+
+  const handleClick = async () => {
+    if (!publicClient || !walletClient || !address) {
+      setErrorMessage("Please connect your wallet");
+      setOrderStatus("error");
+      return;
+    }
 
     try {
-      console.log('[CLIENT] Calling postSwapOrderFromQuote...');
+      // Step 1: Check and handle approval if needed
+      if (!isApproved) {
+        setOrderStatus("checking-approval");
+
+        const allowance = await getCowProtocolAllowance(
+          publicClient,
+          walletClient,
+          {
+            tokenAddress: tokenInfo.fromTokenAddress as Address,
+            owner: address,
+            chainId: tokenInfo.chainId
+          }
+        );
+
+        if (allowance < requiredAmount) {
+          setOrderStatus("approving");
+
+          await approveCowProtocol(publicClient, walletClient, {
+            tokenAddress: tokenInfo.fromTokenAddress as Address,
+            amount: requiredAmount,
+            chainId: tokenInfo.chainId
+          });
+
+          setIsApproved(true);
+        }
+      }
+
+      // Step 2: Create and submit the order
+      setOrderStatus("creating");
+      console.log("[CLIENT] Calling postSwapOrderFromQuote...");
+
+      setOrderStatus("signing");
       const id = await postSwapOrderFromQuote();
 
-      console.log('[CLIENT] Order submitted!', id);
+      setOrderStatus("submitting");
+      console.log("[CLIENT] Order submitted!", id);
+
       setOrderId(id);
-      setStatus('success');
+      setOrderStatus("success");
     } catch (err) {
-      console.error('[CLIENT] Order submission error:', err);
-      setError(err instanceof Error ? err.message : 'Failed to submit order');
-      setStatus('error');
+      console.error("[CLIENT] Order submission error:", err);
+      setErrorMessage(
+        err instanceof Error ? err.message : "Failed to submit order"
+      );
+      setOrderStatus("error");
     }
   };
 
-  if (status === 'success') {
+  if (orderStatus === "success") {
     return (
       <div className="space-y-2">
         <div className="text-xs text-emerald-400 bg-emerald-500/10 px-3 py-2 rounded-md">
-          ✓ Order submitted successfully!
+          ✓ Order submitted successfully! Your swap will be executed in the next
+          batch auction.
         </div>
         {orderId && (
           <a
@@ -542,40 +667,111 @@ function CreateOrderButton({
     );
   }
 
-  if (status === 'error') {
-    return (
-      <div className="space-y-2">
-        <div className="text-xs text-red-400 bg-red-500/10 px-3 py-2 rounded-md">
-          {error || 'Failed to submit order'}
-        </div>
-        <button
-          onClick={handleSubmit}
-          className="w-full px-4 py-3 rounded-lg font-semibold text-sm bg-emerald-600 hover:bg-emerald-500 text-white"
-        >
-          Try Again
-        </button>
-      </div>
-    );
-  }
-
   return (
-    <button
-      onClick={handleSubmit}
-      disabled={status === 'submitting'}
-      className={`w-full px-4 py-3 rounded-lg font-semibold text-sm transition-all ${
-        status === 'submitting'
-          ? "bg-emerald-600 text-white cursor-wait"
-          : "bg-emerald-600 hover:bg-emerald-500 text-white"
-      }`}
-    >
-      {status === 'submitting' ? (
-        <span className="flex items-center justify-center gap-2">
-          <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-          Submitting via Trading SDK...
-        </span>
-      ) : (
-        "Create Order"
+    <div className="space-y-2">
+      {/* Balance Display */}
+      {balance && (
+        <div className="text-xs text-gray-400">
+          Balance:{" "}
+          {parseFloat(formatUnits(balance.value, balance.decimals)).toFixed(6)}{" "}
+          {tokenInfo.fromToken}
+        </div>
       )}
-    </button>
+
+      {/* Approval Status */}
+      {!isApproved &&
+        hasEnoughBalance &&
+        !balanceLoading &&
+        !isCheckingApproval && (
+          <div className="text-xs text-yellow-400 bg-yellow-500/10 px-3 py-2 rounded-md">
+            ⚠️ Token approval required. You&apos;ll be asked to approve{" "}
+            {tokenInfo.fromToken} before creating the order.
+          </div>
+        )}
+
+      {/* Error Messages */}
+      {!hasEnoughBalance && !balanceLoading && balance && (
+        <div className="text-xs text-red-400 bg-red-500/10 px-3 py-2 rounded-md">
+          Insufficient {tokenInfo.fromToken} balance. You need{" "}
+          {tokenInfo.amount} {tokenInfo.fromToken} but only have{" "}
+          {parseFloat(formatUnits(balance.value, balance.decimals)).toFixed(6)}{" "}
+          {tokenInfo.fromToken}.
+        </div>
+      )}
+
+      {orderStatus === "error" && errorMessage && (
+        <div className="text-xs text-red-400 bg-red-500/10 px-3 py-2 rounded-md">
+          {errorMessage}
+        </div>
+      )}
+
+      {/* Create Order Button */}
+      <button
+        onClick={handleClick}
+        disabled={
+          !address ||
+          orderStatus !== "idle" ||
+          !hasEnoughBalance ||
+          balanceLoading ||
+          isCheckingApproval
+        }
+        className={`w-full px-4 py-3 rounded-lg font-semibold text-sm transition-all ${
+          !address ||
+          !hasEnoughBalance ||
+          balanceLoading ||
+          isCheckingApproval ||
+          orderStatus === "error"
+            ? "bg-gray-700 text-gray-400 cursor-not-allowed"
+            : orderStatus !== "idle"
+            ? "bg-emerald-600 text-white cursor-wait"
+            : "bg-emerald-600 hover:bg-emerald-500 text-white"
+        }`}
+      >
+        {balanceLoading ? (
+          <span className="flex items-center justify-center gap-2">
+            <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+            Checking balance...
+          </span>
+        ) : isCheckingApproval ? (
+          <span className="flex items-center justify-center gap-2">
+            <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+            Checking approval...
+          </span>
+        ) : orderStatus === "checking-approval" ? (
+          <span className="flex items-center justify-center gap-2">
+            <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+            Checking approval...
+          </span>
+        ) : orderStatus === "approving" ? (
+          <span className="flex items-center justify-center gap-2">
+            <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+            Approve in wallet...
+          </span>
+        ) : orderStatus === "creating" ? (
+          <span className="flex items-center justify-center gap-2">
+            <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+            Preparing order...
+          </span>
+        ) : orderStatus === "signing" ? (
+          <span className="flex items-center justify-center gap-2">
+            <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+            Sign in wallet...
+          </span>
+        ) : orderStatus === "submitting" ? (
+          <span className="flex items-center justify-center gap-2">
+            <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+            Submitting order...
+          </span>
+        ) : orderStatus === "error" ? (
+          "Try Again"
+        ) : !hasEnoughBalance ? (
+          "Insufficient Balance"
+        ) : !isApproved ? (
+          "Approve & Create Order"
+        ) : (
+          "Create Order"
+        )}
+      </button>
+    </div>
   );
 }
