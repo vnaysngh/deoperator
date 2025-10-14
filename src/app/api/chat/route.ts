@@ -1,9 +1,8 @@
 import { openai } from "@ai-sdk/openai";
 import { streamText, tool, convertToModelMessages, UIMessage } from "ai";
 import { z } from "zod";
-import { getTokenBySymbol, normalizeTokenSymbol } from "@/lib/tokens";
+import { getTokenBySymbol, normalizeTokenSymbol, formatTokenAmount } from "@/lib/tokens";
 import { getTokenUSDPrice } from "@/lib/sushiswap";
-import { getCowSwapQuote, createCowSwapOrder } from "@/lib/cowswap";
 import { getChainName } from "@/lib/chains";
 
 export const maxDuration = 30;
@@ -94,6 +93,9 @@ export async function POST(req: Request) {
       - If user says "swap 10 ARB to USDC on Arbitrum" → Have everything!
 
       STEP 2: Get Quote (use getSwapQuote tool)
+      - ⚠️ CRITICAL: You MUST call getSwapQuote tool for EVERY new swap request, even if you recently got a quote for the same token pair
+      - NEVER reuse old quote data - prices change constantly
+      - If the user changes the amount (e.g., from "10 ARB" to "2 ARB"), you MUST call getSwapQuote again with the NEW amount
       - Show the quote details clearly:
         - Input: X TOKEN_A
         - Output: ~Y TOKEN_B
@@ -115,13 +117,27 @@ export async function POST(req: Request) {
       - Tell user: "Order created! Please sign the order in your wallet to submit it to CoW Protocol."
       - Explain that the order will be executed in the next batch auction at the best available price
 
-      Example Flow:
+      Example Flow 1:
       User: "swap 10 ARB to USDC on Arbitrum"
-      → You: *calls getSwapQuote*
+      → You: *calls getSwapQuote with amount="10"*
       → You: "I can swap 10 ARB for ~3.31 USDC on Arbitrum. Fee: ~0.08 ARB. Price impact: < 0.01%. Would you like to create an order?"
       User: "yes" (or clicks "Create Order" button)
       → You: *calls createOrder (wallet address is automatic)*
       → You: "Order created! Please sign the order in your wallet to submit it to CoW Protocol. Your swap will be executed in the next batch auction."
+
+      Example Flow 2 (User changes amount):
+      User: "swap 10 ARB to USDC on Arbitrum"
+      → You: *calls getSwapQuote with amount="10"*
+      → You shows quote for 10 ARB
+      User: "swap 2 ARB to USDC"
+      → You: *MUST call getSwapQuote AGAIN with amount="2" and chainId=42161 (same chain as before)* ⚠️ DO NOT reuse the old quote!
+      → You shows NEW quote for 2 ARB
+
+      ⚠️ CHAIN CONTEXT MEMORY:
+      - If user previously specified a chain in the conversation, remember it for follow-up requests
+      - Example: User says "swap 10 ARB on Arbitrum", then later "swap 2 ARB to USDC" → Use Arbitrum (42161) again
+      - If user explicitly changes the chain, use the new chain
+      - If starting a completely new swap conversation, ask for the chain again
 
       🎯 ERROR HANDLING - ABSOLUTELY CRITICAL - READ THIS CAREFULLY:
 
@@ -163,7 +179,7 @@ export async function POST(req: Request) {
     tools: {
       getSwapQuote: tool({
         description:
-          "Get a real-time quote for swapping tokens using CoW Protocol. ONLY call this when you have confirmed: fromToken, toToken, amount, AND chainId with the user. Do NOT assume defaults. Only supports Arbitrum (42161) and BNB Chain (56).",
+          "Get token information for a swap. Returns token addresses and decimals. The client-side SDK will fetch the actual quote. ONLY call this when you have confirmed: fromToken, toToken, amount, AND chainId with the user. Do NOT assume defaults. Only supports Arbitrum (42161) and BNB Chain (56).",
         inputSchema: z.object({
           fromToken: z
             .string()
@@ -185,59 +201,66 @@ export async function POST(req: Request) {
             )
         }),
         execute: async ({ fromToken, toToken, amount, chainId }) => {
+          console.log('[TOOL:getSwapQuote] Getting token info for quote:', {
+            fromToken,
+            toToken,
+            amount,
+            chainId
+          });
+
           try {
             const normalizedFrom = normalizeTokenSymbol(fromToken, chainId);
             const normalizedTo = normalizeTokenSymbol(toToken, chainId);
             const chainName = getChainName(chainId);
 
-            // Get real-time quote from CoW Protocol API
-            const quote = await getCowSwapQuote(
-              normalizedFrom,
-              normalizedTo,
-              amount,
-              walletAddress, // Optional for quote
-              chainId,
-              0.005 // 0.5% slippage
-            );
+            // Get token information
+            const fromTokenInfo = getTokenBySymbol(normalizedFrom, chainId);
+            const toTokenInfo = getTokenBySymbol(normalizedTo, chainId);
 
-            if (!quote.success) {
+            if (!fromTokenInfo) {
               return {
                 success: false,
-                userMessage: quote.userMessage,
-                error: quote.error || "Failed to get quote from CoW Protocol"
+                userMessage: `I couldn't find ${fromToken} on ${chainName}. Could you double-check the token name?`,
+                error: `Token not found: ${fromToken}`
               };
             }
 
+            if (!toTokenInfo) {
+              return {
+                success: false,
+                userMessage: `I couldn't find ${toToken} on ${chainName}. Could you double-check the token name?`,
+                error: `Token not found: ${toToken}`
+              };
+            }
+
+            // Return token info for client-side SDK to use
             return {
               success: true,
               chain: chainName,
               chainId,
               fromToken: normalizedFrom,
               toToken: normalizedTo,
-              inputAmount: amount,
-              estimatedOutput: quote.outputAmount,
-              priceImpact: quote.priceImpact || "< 0.01%",
-              gasEstimate: quote.gasEstimate || "~Free (subsidized)",
-              route: quote.route || `${normalizedFrom} → [CoW Protocol] → ${normalizedTo}`,
-              feeAmount: quote.feeAmount,
-              quoteId: quote.quoteId,
-              validTo: quote.validTo
+              amount,
+              fromTokenAddress: fromTokenInfo.address,
+              fromTokenDecimals: fromTokenInfo.decimals,
+              toTokenAddress: toTokenInfo.address,
+              toTokenDecimals: toTokenInfo.decimals,
+              // Instruction for the client to fetch quote
+              needsClientQuote: true
             };
           } catch (error) {
+            console.error('[TOOL:getSwapQuote] Error:', error);
             return {
               success: false,
-              userMessage: "Something went wrong while getting the quote. Want to try again?",
-              error:
-                error instanceof Error
-                  ? error.message
-                  : "Unknown error occurred"
+              userMessage: "Something went wrong. Want to try again?",
+              error: error instanceof Error ? error.message : "Unknown error"
             };
           }
         }
       }),
       createOrder: tool({
         description:
-          "Create an order on CoW Protocol for a token swap. This prepares the order data that will be signed by the user's wallet. ONLY call this after: 1) User has seen the quote, 2) User has confirmed they want to proceed (clicked 'Create Order' button or said yes/confirm). The wallet address is automatically provided from the connected wallet.",
+          "Return token information for order creation. The client-side SDK will handle quote, signing, and submission. ONLY call this after: 1) User has seen the quote, 2) User has confirmed they want to proceed (clicked 'Create Order' button or said yes/confirm).",
         inputSchema: z.object({
           fromToken: z.string().describe("The token symbol to swap from"),
           toToken: z.string().describe("The token symbol to swap to"),
@@ -246,22 +269,22 @@ export async function POST(req: Request) {
             .number()
             .describe(
               "Chain ID - REQUIRED. 42161=Arbitrum, 56=BNB"
-            ),
-          slippage: z
-            .number()
-            .optional()
-            .describe(
-              "Slippage tolerance as decimal (e.g., 0.005 = 0.5%), default: 0.005"
             )
         }),
         execute: async ({
           fromToken,
           toToken,
           amount,
-          chainId,
-          slippage = 0.005
+          chainId
         }) => {
-          // Use the wallet address from the request header
+          console.log('[TOOL:createOrder] Getting token info for order:', {
+            fromToken,
+            toToken,
+            amount,
+            chainId,
+            walletAddress
+          });
+
           if (!walletAddress) {
             return {
               success: false,
@@ -269,49 +292,51 @@ export async function POST(req: Request) {
               error: "Wallet address not provided"
             };
           }
+
           try {
             const normalizedFrom = normalizeTokenSymbol(fromToken, chainId);
             const normalizedTo = normalizeTokenSymbol(toToken, chainId);
             const chainName = getChainName(chainId);
 
-            // Create order using CoW Protocol API
-            const orderResult = await createCowSwapOrder(
-              normalizedFrom,
-              normalizedTo,
-              amount,
-              walletAddress,
-              chainId,
-              slippage
-            );
+            // Get token information
+            const fromTokenInfo = getTokenBySymbol(normalizedFrom, chainId);
+            const toTokenInfo = getTokenBySymbol(normalizedTo, chainId);
 
-            if (!orderResult.success) {
+            if (!fromTokenInfo || !toTokenInfo) {
               return {
                 success: false,
-                userMessage: orderResult.userMessage,
-                error: orderResult.error || "Failed to create order"
+                userMessage: "Token not found",
+                error: "Token lookup failed"
               };
             }
 
-            // Return order data for frontend to sign and submit
+            // Convert amount to smallest unit
+            const sellAmount = formatTokenAmount(amount, fromTokenInfo.decimals);
+
+            // Return token info for client-side SDK to use
             return {
               success: true,
               chain: chainName,
               chainId,
               fromToken: normalizedFrom,
               toToken: normalizedTo,
-              inputAmount: amount,
-              orderData: orderResult.orderData,
-              message: orderResult.message || `Order created! Please sign the order in your wallet to submit it to CoW Protocol. Your swap will be executed in the next batch auction at the best available price.`
+              amount,
+              fromTokenAddress: fromTokenInfo.address,
+              fromTokenDecimals: fromTokenInfo.decimals,
+              toTokenAddress: toTokenInfo.address,
+              toTokenDecimals: toTokenInfo.decimals,
+              sellAmount: sellAmount.toString(),
+              userAddress: walletAddress,
+              // Instruction for the client to use SDK
+              needsClientSubmission: true,
+              message: `Ready to swap ${amount} ${normalizedFrom} for ${normalizedTo}. The client SDK will now fetch a quote and submit your order.`
             };
           } catch (error) {
+            console.error('[TOOL:createOrder] Error:', error);
             return {
               success: false,
-              userMessage:
-                "Something went wrong while creating the order. Want to try again?",
-              error:
-                error instanceof Error
-                  ? error.message
-                  : "Unknown error occurred"
+              userMessage: "Something went wrong. Want to try again?",
+              error: error instanceof Error ? error.message : "Unknown error"
             };
           }
         }

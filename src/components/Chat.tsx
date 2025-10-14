@@ -3,22 +3,16 @@
 import { useChat } from "@ai-sdk/react";
 import { useEffect, useRef, useState } from "react";
 import { DefaultChatTransport } from "ai";
-import { useBalance, useAccount, useSignTypedData, useReadContract, useWriteContract, useWaitForTransactionReceipt } from "wagmi";
-import { formatUnits, erc20Abi } from "viem";
+import { useAccount, usePublicClient, useWalletClient } from "wagmi";
+import { quoteAndSubmitSwap } from "@/lib/cowswap-client";
+import type { Address } from "viem";
 
 interface ChatProps {
   walletAddress?: string;
-  onExecuteSwap?: (data: {
-    fromToken: string;
-    toToken: string;
-    amount: string;
-    slippage: string;
-  }) => void;
 }
 
 export function Chat({ walletAddress }: ChatProps) {
   const [input, setInput] = useState("");
-  const [creatingOrder, setCreatingOrder] = useState(false);
   const { messages, sendMessage, status } = useChat({
     transport: new DefaultChatTransport({
       api: "/api/chat",
@@ -30,6 +24,8 @@ export function Chat({ walletAddress }: ChatProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const { address } = useAccount();
+  const publicClient = usePublicClient();
+  const { data: walletClient } = useWalletClient();
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -37,7 +33,6 @@ export function Chat({ walletAddress }: ChatProps) {
 
   useEffect(() => {
     scrollToBottom();
-    // Keep input focused after new messages
     if (inputRef.current && walletAddress && status !== "streaming") {
       inputRef.current.focus();
     }
@@ -45,24 +40,6 @@ export function Chat({ walletAddress }: ChatProps) {
 
   return (
     <div className="bg-black rounded-2xl overflow-hidden shadow-2xl flex flex-col max-h-[80vh]">
-      {/* Header */}
-      {/*  <div className="px-6 py-4">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="relative">
-              <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></div>
-              <div className="absolute inset-0 w-2 h-2 rounded-full bg-emerald-500 animate-ping"></div>
-            </div>
-            <h2 className="font-semibold text-white">Trading Assistant</h2>
-          </div>
-          {walletAddress && (
-            <div className="px-3 py-1 rounded-lg text-xs font-mono text-gray-400">
-              {walletAddress.slice(0, 6)}...{walletAddress.slice(-4)}
-            </div>
-          )}
-        </div>
-      </div> */}
-
       {/* Messages */}
       <div className="flex-1 overflow-y-auto p-6 space-y-4 min-h-[500px]">
         {messages.length === 0 && (
@@ -126,145 +103,37 @@ export function Chat({ walletAddress }: ChatProps) {
                         part.state === "output-available" &&
                         "output" in part
                       ) {
-                        // Check if this is a swap quote output
-                        const output = part.output as {
-                          success?: boolean;
-                          chain?: string;
-                          chainId?: number;
-                          estimatedOutput?: string;
-                          fromToken?: string;
-                          toToken?: string;
-                          inputAmount?: string;
-                          priceImpact?: string;
-                          gasEstimate?: string;
-                          route?: string;
-                          price?: string;
-                          message?: string;
-                          feeAmount?: string;
-                          quoteId?: number;
-                        };
-                        const isQuote =
-                          output?.success &&
-                          output?.estimatedOutput &&
-                          output?.fromToken &&
-                          output?.toToken;
-                        const isPrice =
-                          output?.success && output?.price && output?.message;
+                        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                        const output = part.output as any;
 
-                        if (isQuote) {
-                          // Function to handle create order
-                          const handleCreateOrder = async () => {
-                            if (
-                              !address ||
-                              !output.fromToken ||
-                              !output.toToken ||
-                              !output.inputAmount ||
-                              !output.chainId
-                            ) {
-                              return;
-                            }
-
-                            setCreatingOrder(true);
-
-                            try {
-                              // Send message to create order
-                              await sendMessage({
-                                text: `create order for ${output.inputAmount} ${output.fromToken} to ${output.toToken}`
-                              });
-                            } catch (error) {
-                              console.error("Failed to create order:", error);
-                            } finally {
-                              setCreatingOrder(false);
-                            }
-                          };
-
+                        // Check if this needs client-side quote fetching
+                        if (output?.needsClientQuote) {
                           return (
-                            <div
+                            <QuoteDisplay
                               key={index}
-                              className="mt-3 pt-3 border-t border-white/10"
-                            >
-                              <div className="glass-strong rounded-lg p-4 space-y-2">
-                                <div className="flex items-center justify-between mb-3">
-                                  <div className="flex items-center gap-2">
-                                    <div className="w-2 h-2 rounded-full bg-emerald-500"></div>
-                                    <span className="text-xs font-semibold text-emerald-400">
-                                      CoW Protocol Quote
-                                    </span>
-                                  </div>
-                                  {output.chain && (
-                                    <span className="text-xs px-2 py-1 glass rounded-md text-gray-400">
-                                      {output.chain}
-                                    </span>
-                                  )}
-                                </div>
-                                <div className="grid grid-cols-2 gap-3 text-sm">
-                                  <div>
-                                    <div className="text-gray-500 text-xs">
-                                      From
-                                    </div>
-                                    <div className="text-white font-semibold">
-                                      {output.inputAmount} {output.fromToken}
-                                    </div>
-                                  </div>
-                                  <div>
-                                    <div className="text-gray-500 text-xs">
-                                      To
-                                    </div>
-                                    <div className="text-white font-semibold">
-                                      {output.estimatedOutput} {output.toToken}
-                                    </div>
-                                  </div>
-                                  {output.priceImpact &&
-                                    output.priceImpact !== "N/A" && (
-                                      <div>
-                                        <div className="text-gray-500 text-xs">
-                                          Price Impact
-                                        </div>
-                                        <div className="text-white">
-                                          {output.priceImpact}
-                                        </div>
-                                      </div>
-                                    )}
-                                  {output.gasEstimate &&
-                                    output.gasEstimate !== "N/A" && (
-                                      <div>
-                                        <div className="text-gray-500 text-xs">
-                                          Gas Estimate
-                                        </div>
-                                        <div className="text-white">
-                                          {output.gasEstimate}
-                                        </div>
-                                      </div>
-                                    )}
-                                </div>
-                                {output.route && (
-                                  <div className="pt-2 mt-2 border-t border-white/5">
-                                    <div className="text-gray-500 text-xs">
-                                      Route
-                                    </div>
-                                    <div className="text-white text-sm">
-                                      {output.route}
-                                    </div>
-                                  </div>
-                                )}
-
-                                {/* Create Order Button */}
-                                <div className="pt-3 mt-3 border-t border-white/5">
-                                  <CreateOrderButton
-                                    fromToken={output.fromToken}
-                                    toToken={output.toToken}
-                                    amount={output.inputAmount}
-                                    chainId={output.chainId}
-                                    address={address}
-                                    onCreateOrder={handleCreateOrder}
-                                    isCreating={creatingOrder}
-                                  />
-                                </div>
-                              </div>
-                            </div>
+                              tokenInfo={output}
+                              publicClient={publicClient}
+                              walletClient={walletClient}
+                              address={address}
+                            />
                           );
                         }
 
+                        // Check if this needs client-side order submission
+                        if (output?.needsClientSubmission) {
+                          return (
+                            <OrderSubmit
+                              key={index}
+                              tokenInfo={output}
+                              publicClient={publicClient}
+                              walletClient={walletClient}
+                              address={address}
+                            />
+                          );
+                        }
+
+                        // Price display
+                        const isPrice = output?.success && output?.price && output?.message;
                         if (isPrice) {
                           return (
                             <div
@@ -286,16 +155,11 @@ export function Chat({ walletAddress }: ChatProps) {
                           );
                         }
 
-                        // Check for error with userMessage
-                        if (
-                          output?.success === false &&
-                          "userMessage" in output
-                        ) {
-                          // Don't render anything - the AI should handle the userMessage in its text response
+                        // Error handling
+                        if (output?.success === false && "userMessage" in output) {
                           return null;
                         }
 
-                        // Default tool output (only for non-error cases without special formatting)
                         return null;
                       }
                       if (
@@ -309,7 +173,7 @@ export function Chat({ walletAddress }: ChatProps) {
                           >
                             <div className="text-xs flex items-center gap-2 text-primary-300">
                               <div className="w-3 h-3 border-2 border-primary-400 border-t-transparent rounded-full animate-spin"></div>
-                              <span>Fetching real-time quote...</span>
+                              <span>Processing...</span>
                             </div>
                           </div>
                         );
@@ -370,346 +234,348 @@ export function Chat({ walletAddress }: ChatProps) {
   );
 }
 
-// Create Order Button Component with Balance Checking
-function CreateOrderButton({
-  fromToken,
-  toToken,
-  amount,
-  chainId,
-  address,
-  onCreateOrder,
-  isCreating
+/**
+ * Component that fetches and displays quote using client-side Trading SDK
+ */
+function QuoteDisplay({
+  tokenInfo,
+  publicClient,
+  walletClient,
+  address
 }: {
-  fromToken?: string;
-  toToken?: string;
-  amount?: string;
-  chainId?: number;
-  address?: `0x${string}`;
-  onCreateOrder: () => void;
-  isCreating: boolean;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  tokenInfo: any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  publicClient: any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  walletClient: any;
+  address?: Address;
 }) {
-  const [orderStatus, setOrderStatus] = useState<
-    "idle" | "checking-approval" | "approving" | "creating" | "signing" | "submitting" | "success" | "error"
-  >("idle");
-  const [errorMessage, setErrorMessage] = useState<string>("");
-  const { signTypedDataAsync } = useSignTypedData();
-  const { writeContractAsync } = useWriteContract();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [quote, setQuote] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  // CoW Protocol VaultRelayer address (same across all chains)
-  const VAULT_RELAYER = "0xC92E8bdf79f0507f65a392b0ab4667716BFE0110" as `0x${string}`;
-  // Get token addresses for balance checking
-  const getTokenAddress = (
-    symbol: string,
-    chain: number
-  ): `0x${string}` | undefined => {
-    // Token addresses for Arbitrum (42161)
-    const arbitrumTokens: Record<string, `0x${string}`> = {
-      USDC: "0xaf88d065e77c8cC2239327C5EDb3A432268e5831",
-      USDT: "0xFd086bC7CD5C481DCC9C85ebE478A1C0b69FCbb9",
-      DAI: "0xDA10009cBd5D07dd0CeCc66161FC93D7c9000da1",
-      WETH: "0x82aF49447D8a07e3bd95BD0d56f35241523fBab1",
-      WBTC: "0x2f2a2543B76A4166549F7aaB2e75Bef0aefC5B0f",
-      ARB: "0x912CE59144191C1204E64559FE8253a0e49E6548",
-      GMX: "0xfc5A1A6EB076a2C7aD06eD22C90d7E710E35ad0a",
-      UNI: "0xFa7F8980b0f1E64A2062791cc3b0871572f1F7f0"
-    };
+  useEffect(() => {
+    async function fetchQuote() {
+      if (!publicClient || !walletClient || !address) {
+        setError("Please connect your wallet");
+        setLoading(false);
+        return;
+      }
 
-    // Token addresses for BNB Chain (56)
-    const bnbTokens: Record<string, `0x${string}`> = {
-      USDC: "0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d",
-      USDT: "0x55d398326f99059fF775485246999027B3197955",
-      DAI: "0x1AF3F329e8BE154074D8769D1FFa4eE058B1DBc3",
-      WBNB: "0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c",
-      WETH: "0x2170Ed0880ac9A755fd29B2688956BD959F933F8",
-      BTCB: "0x7130d2A12B9BCbFAe4f2634d864A1Ee1Ce3Ead9c",
-      CAKE: "0x0E09FaBB73Bd3Ade0a17ECC321fD13a19e81cE82",
-      ADA: "0x3EE2200Efb3400fAbB9AacF31297cBdD1d435D47"
-    };
+      try {
+        console.log('[CLIENT] Fetching quote with Trading SDK...');
 
-    if (chain === 42161) {
-      return arbitrumTokens[symbol.toUpperCase()];
-    } else if (chain === 56) {
-      return bnbTokens[symbol.toUpperCase()];
-    }
-    return undefined;
-  };
+        // Import and use the client SDK
+        const { getSwapQuote } = await import('@/lib/cowswap-client');
 
-  const tokenAddress =
-    fromToken && chainId ? getTokenAddress(fromToken, chainId) : undefined;
+        const quoteResponse = await getSwapQuote(
+          publicClient,
+          walletClient,
+          {
+            sellToken: tokenInfo.fromTokenAddress as Address,
+            sellTokenDecimals: tokenInfo.fromTokenDecimals,
+            buyToken: tokenInfo.toTokenAddress as Address,
+            buyTokenDecimals: tokenInfo.toTokenDecimals,
+            amount: (BigInt(tokenInfo.amount) * BigInt(10 ** tokenInfo.fromTokenDecimals)).toString(),
+            userAddress: address,
+            chainId: tokenInfo.chainId
+          }
+        );
 
-  // Fetch balance for the from token
-  const { data: balance, isLoading: balanceLoading } = useBalance({
-    address: address,
-    token: tokenAddress,
-    chainId: chainId
-  });
+        if (!quoteResponse.quoteResults) {
+          throw new Error('Failed to get quote');
+        }
 
-  // Check current allowance for CoW Protocol VaultRelayer
-  const { data: allowance, refetch: refetchAllowance } = useReadContract({
-    address: tokenAddress,
-    abi: erc20Abi,
-    functionName: "allowance",
-    args: address && tokenAddress ? [address, VAULT_RELAYER] : undefined,
-    chainId: chainId,
-  });
+        const { amountsAndCosts } = quoteResponse.quoteResults;
+        const buyAmount = amountsAndCosts.afterSlippage.buyAmount;
+        const feeAmount = amountsAndCosts.costs.networkFee.amountInSellCurrency;
 
-  // Check if user has enough balance
-  const hasEnoughBalance =
-    balance && amount
-      ? parseFloat(formatUnits(balance.value, balance.decimals)) >=
-        parseFloat(amount)
-      : false;
-
-  // Check if token is approved (allowance >= amount needed)
-  const amountInWei = amount && balance ? BigInt(Math.floor(parseFloat(amount) * Math.pow(10, balance.decimals))) : BigInt(0);
-  const isApproved = allowance !== undefined && allowance >= amountInWei;
-
-  const handleClick = async () => {
-    if (!address || !fromToken || !toToken || !amount || !chainId || !tokenAddress) {
-      return;
-    }
-
-    if (!hasEnoughBalance) {
-      return; // Button will be disabled
-    }
-
-    try {
-      setOrderStatus("checking-approval");
-      setErrorMessage("");
-
-      // Step 1: Check and handle token approval
-      if (!isApproved) {
-        setOrderStatus("approving");
-
-        // Request approval for the exact amount (or you could use max: 2^256-1)
-        const approveTx = await writeContractAsync({
-          address: tokenAddress,
-          abi: erc20Abi,
-          functionName: "approve",
-          args: [VAULT_RELAYER, amountInWei],
-          chainId: chainId,
+        setQuote({
+          buyAmount: (Number(buyAmount) / Math.pow(10, tokenInfo.toTokenDecimals)).toFixed(6),
+          feeAmount: (Number(feeAmount) / Math.pow(10, tokenInfo.fromTokenDecimals)).toFixed(6),
+          postSwapOrderFromQuote: quoteResponse.postSwapOrderFromQuote
         });
-
-        console.log("Approval transaction:", approveTx);
-
-        // Wait a moment and refetch allowance
-        await new Promise(resolve => setTimeout(resolve, 2000));
-        await refetchAllowance();
+        setLoading(false);
+      } catch (err) {
+        console.error('[CLIENT] Quote fetch error:', err);
+        setError(err instanceof Error ? err.message : 'Failed to get quote');
+        setLoading(false);
       }
-
-      // Step 2: Create order
-      setOrderStatus("creating");
-      setErrorMessage("");
-
-      // Step 1: Get order data from API
-      const orderResponse = await fetch("/api/create-order", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-wallet-address": address
-        },
-        body: JSON.stringify({
-          fromToken,
-          toToken,
-          amount,
-          chainId
-        })
-      });
-
-      const orderResult = await orderResponse.json();
-
-      if (!orderResult.success || !orderResult.needsSignature) {
-        throw new Error(orderResult.error || "Failed to create order");
-      }
-
-      // Step 2: Sign the order using EIP-712
-      setOrderStatus("signing");
-
-      const { orderData } = orderResult;
-
-      // Log the order data we're about to sign
-      console.log("Order data to sign:", JSON.stringify(orderData, null, 2));
-      console.log("User address:", address);
-
-      // CoW Protocol EIP-712 domain and types
-      const domain = {
-        name: "Gnosis Protocol",
-        version: "v2",
-        chainId: chainId,
-        verifyingContract:
-          "0x9008D19f58AAbD9eD0D60971565AA8510560ab41" as `0x${string}` // GPv2Settlement contract
-      };
-
-      const types = {
-        Order: [
-          { name: "sellToken", type: "address" },
-          { name: "buyToken", type: "address" },
-          { name: "receiver", type: "address" },
-          { name: "sellAmount", type: "uint256" },
-          { name: "buyAmount", type: "uint256" },
-          { name: "validTo", type: "uint32" },
-          { name: "appData", type: "bytes32" },
-          { name: "feeAmount", type: "uint256" },
-          { name: "kind", type: "string" },
-          { name: "partiallyFillable", type: "bool" },
-          { name: "sellTokenBalance", type: "string" },
-          { name: "buyTokenBalance", type: "string" }
-        ]
-      };
-
-      console.log("EIP-712 domain:", domain);
-      console.log("EIP-712 types:", types);
-
-      const signature = await signTypedDataAsync({
-        domain,
-        types,
-        primaryType: "Order",
-        message: orderData
-      });
-
-      console.log("Signature:", signature);
-
-      // Step 3: Submit signed order with the SAME order data that was signed
-      setOrderStatus("submitting");
-
-      const submitResponse = await fetch("/api/create-order", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-wallet-address": address
-        },
-        body: JSON.stringify({
-          fromToken,
-          toToken,
-          amount,
-          chainId,
-          signature,
-          orderData // Send the exact same order data that was signed
-        })
-      });
-
-      const submitResult = await submitResponse.json();
-
-      if (!submitResult.success) {
-        throw new Error(submitResult.error || "Failed to submit order");
-      }
-
-      setOrderStatus("success");
-
-      // Call the original onCreateOrder callback
-      onCreateOrder();
-    } catch (error) {
-      console.error("Order creation error:", error);
-      setOrderStatus("error");
-      setErrorMessage(
-        error instanceof Error ? error.message : "Failed to create order"
-      );
     }
-  };
+
+    fetchQuote();
+  }, [tokenInfo, publicClient, walletClient, address]);
+
+  if (loading) {
+    return (
+      <div className="mt-3 pt-3 border-t border-white/10">
+        <div className="text-xs flex items-center gap-2 text-primary-300">
+          <div className="w-3 h-3 border-2 border-primary-400 border-t-transparent rounded-full animate-spin"></div>
+          <span>Fetching quote from Trading SDK...</span>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="mt-3 pt-3 border-t border-white/10">
+        <div className="glass-strong rounded-lg p-4">
+          <div className="text-red-400 text-sm">{error}</div>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div className="space-y-2">
-      {/* Balance Display */}
-      {balance && (
-        <div className="text-xs text-gray-400">
-          Balance:{" "}
-          {parseFloat(formatUnits(balance.value, balance.decimals)).toFixed(6)}{" "}
-          {fromToken}
+    <div className="mt-3 pt-3 border-t border-white/10">
+      <div className="glass-strong rounded-lg p-4 space-y-2">
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-2">
+            <div className="w-2 h-2 rounded-full bg-emerald-500"></div>
+            <span className="text-xs font-semibold text-emerald-400">
+              CoW Protocol Quote
+            </span>
+          </div>
+          {tokenInfo.chain && (
+            <span className="text-xs px-2 py-1 glass rounded-md text-gray-400">
+              {tokenInfo.chain}
+            </span>
+          )}
         </div>
-      )}
-
-      {/* Approval Status */}
-      {!isApproved && hasEnoughBalance && !balanceLoading && (
-        <div className="text-xs text-yellow-400 bg-yellow-500/10 px-3 py-2 rounded-md">
-          ⚠️ Token approval required. You&apos;ll be asked to approve {fromToken} before creating the order.
+        <div className="grid grid-cols-2 gap-3 text-sm">
+          <div>
+            <div className="text-gray-500 text-xs">From</div>
+            <div className="text-white font-semibold">
+              {tokenInfo.amount} {tokenInfo.fromToken}
+            </div>
+          </div>
+          <div>
+            <div className="text-gray-500 text-xs">To</div>
+            <div className="text-white font-semibold">
+              {quote.buyAmount} {tokenInfo.toToken}
+            </div>
+          </div>
+          <div>
+            <div className="text-gray-500 text-xs">Fee</div>
+            <div className="text-white">
+              {quote.feeAmount} {tokenInfo.fromToken}
+            </div>
+          </div>
+          <div>
+            <div className="text-gray-500 text-xs">Price Impact</div>
+            <div className="text-white">&lt; 0.01%</div>
+          </div>
         </div>
-      )}
-
-      {/* Error Messages */}
-      {!hasEnoughBalance && !balanceLoading && balance && (
-        <div className="text-xs text-red-400 bg-red-500/10 px-3 py-2 rounded-md">
-          Insufficient {fromToken} balance. You need {amount} {fromToken} but
-          only have{" "}
-          {parseFloat(formatUnits(balance.value, balance.decimals)).toFixed(6)}{" "}
-          {fromToken}.
+        <div className="pt-2 mt-2 border-t border-white/5">
+          <div className="text-gray-500 text-xs">Route</div>
+          <div className="text-white text-sm">
+            {tokenInfo.fromToken} → [CoW Protocol Batch Auction] → {tokenInfo.toToken}
+          </div>
         </div>
-      )}
 
-      {orderStatus === "error" && errorMessage && (
-        <div className="text-xs text-red-400 bg-red-500/10 px-3 py-2 rounded-md">
-          {errorMessage}
+        {/* Create Order Button */}
+        <div className="pt-3 mt-3 border-t border-white/5">
+          <CreateOrderButton
+            tokenInfo={tokenInfo}
+            postSwapOrderFromQuote={quote.postSwapOrderFromQuote}
+          />
         </div>
-      )}
-
-      {orderStatus === "success" && (
-        <div className="text-xs text-emerald-400 bg-emerald-500/10 px-3 py-2 rounded-md">
-          Order submitted successfully! Your swap will be executed in the next
-          batch auction.
-        </div>
-      )}
-
-      {/* Create Order Button */}
-      <button
-        onClick={handleClick}
-        disabled={
-          !address ||
-          orderStatus !== "idle" ||
-          !hasEnoughBalance ||
-          balanceLoading
-        }
-        className={`w-full px-4 py-3 rounded-lg font-semibold text-sm transition-all ${
-          !address ||
-          !hasEnoughBalance ||
-          balanceLoading ||
-          orderStatus === "error"
-            ? "bg-gray-700 text-gray-400 cursor-not-allowed"
-            : orderStatus !== "idle"
-            ? "bg-emerald-600 text-white cursor-wait"
-            : "bg-emerald-600 hover:bg-emerald-500 text-white"
-        } ${orderStatus === "success" ? "bg-emerald-700" : ""}`}
-      >
-        {balanceLoading ? (
-          <span className="flex items-center justify-center gap-2">
-            <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-            Checking balance...
-          </span>
-        ) : orderStatus === "checking-approval" ? (
-          <span className="flex items-center justify-center gap-2">
-            <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-            Checking approval...
-          </span>
-        ) : orderStatus === "approving" ? (
-          <span className="flex items-center justify-center gap-2">
-            <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-            Approve in wallet...
-          </span>
-        ) : orderStatus === "creating" ? (
-          <span className="flex items-center justify-center gap-2">
-            <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-            Preparing order...
-          </span>
-        ) : orderStatus === "signing" ? (
-          <span className="flex items-center justify-center gap-2">
-            <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-            Sign in wallet...
-          </span>
-        ) : orderStatus === "submitting" ? (
-          <span className="flex items-center justify-center gap-2">
-            <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-            Submitting order...
-          </span>
-        ) : orderStatus === "success" ? (
-          "✓ Order Submitted"
-        ) : orderStatus === "error" ? (
-          "Try Again"
-        ) : !hasEnoughBalance ? (
-          "Insufficient Balance"
-        ) : !isApproved ? (
-          "Approve & Create Order"
-        ) : (
-          "Create Order"
-        )}
-      </button>
+      </div>
     </div>
+  );
+}
+
+/**
+ * Component that submits order using client-side Trading SDK
+ */
+function OrderSubmit({
+  tokenInfo,
+  publicClient,
+  walletClient,
+  address
+}: {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  tokenInfo: any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  publicClient: any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  walletClient: any;
+  address?: Address;
+}) {
+  const [status, setStatus] = useState<'submitting' | 'success' | 'error'>('submitting');
+  const [orderId, setOrderId] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    async function submitOrder() {
+      if (!publicClient || !walletClient || !address) {
+        setError("Please connect your wallet");
+        setStatus('error');
+        return;
+      }
+
+      try {
+        console.log('[CLIENT] Submitting order with Trading SDK...');
+
+        const result = await quoteAndSubmitSwap(
+          publicClient,
+          walletClient,
+          {
+            sellToken: tokenInfo.fromTokenAddress as Address,
+            sellTokenDecimals: tokenInfo.fromTokenDecimals,
+            buyToken: tokenInfo.toTokenAddress as Address,
+            buyTokenDecimals: tokenInfo.toTokenDecimals,
+            amount: tokenInfo.sellAmount,
+            userAddress: address,
+            chainId: tokenInfo.chainId
+          }
+        );
+
+        setOrderId(result.orderId);
+        setStatus('success');
+      } catch (err) {
+        console.error('[CLIENT] Order submission error:', err);
+        setError(err instanceof Error ? err.message : 'Failed to submit order');
+        setStatus('error');
+      }
+    }
+
+    submitOrder();
+  }, [tokenInfo, publicClient, walletClient, address]);
+
+  if (status === 'submitting') {
+    return (
+      <div className="mt-3 pt-3 border-t border-white/10">
+        <div className="glass-strong rounded-lg p-4">
+          <div className="flex items-center gap-2 text-primary-300">
+            <div className="w-4 h-4 border-2 border-primary-400 border-t-transparent rounded-full animate-spin"></div>
+            <span>Submitting order via Trading SDK...</span>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (status === 'error') {
+    return (
+      <div className="mt-3 pt-3 border-t border-white/10">
+        <div className="glass-strong rounded-lg p-4">
+          <div className="text-red-400">{error || 'Failed to submit order'}</div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="mt-3 pt-3 border-t border-white/10">
+      <div className="glass-strong rounded-lg p-4">
+        <div className="text-emerald-400 font-semibold mb-2">✓ Order Submitted!</div>
+        <div className="text-sm text-gray-300 mb-2">
+          Order ID: <span className="font-mono text-xs">{orderId}</span>
+        </div>
+        <a
+          href={`https://explorer.cow.fi/orders/${orderId}?chainId=${tokenInfo.chainId}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-xs text-primary-400 hover:text-primary-300"
+        >
+          View on CoW Explorer →
+        </a>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Button that calls postSwapOrderFromQuote to submit the order
+ */
+function CreateOrderButton({
+  tokenInfo,
+  postSwapOrderFromQuote
+}: {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  tokenInfo: any;
+  postSwapOrderFromQuote: () => Promise<string>;
+}) {
+  const [status, setStatus] = useState<'idle' | 'submitting' | 'success' | 'error'>('idle');
+  const [orderId, setOrderId] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleSubmit = async () => {
+    setStatus('submitting');
+    setError(null);
+
+    try {
+      console.log('[CLIENT] Calling postSwapOrderFromQuote...');
+      const id = await postSwapOrderFromQuote();
+
+      console.log('[CLIENT] Order submitted!', id);
+      setOrderId(id);
+      setStatus('success');
+    } catch (err) {
+      console.error('[CLIENT] Order submission error:', err);
+      setError(err instanceof Error ? err.message : 'Failed to submit order');
+      setStatus('error');
+    }
+  };
+
+  if (status === 'success') {
+    return (
+      <div className="space-y-2">
+        <div className="text-xs text-emerald-400 bg-emerald-500/10 px-3 py-2 rounded-md">
+          ✓ Order submitted successfully!
+        </div>
+        {orderId && (
+          <a
+            href={`https://explorer.cow.fi/orders/${orderId}?chainId=${tokenInfo.chainId}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="block text-xs text-primary-400 hover:text-primary-300"
+          >
+            View on CoW Explorer →
+          </a>
+        )}
+      </div>
+    );
+  }
+
+  if (status === 'error') {
+    return (
+      <div className="space-y-2">
+        <div className="text-xs text-red-400 bg-red-500/10 px-3 py-2 rounded-md">
+          {error || 'Failed to submit order'}
+        </div>
+        <button
+          onClick={handleSubmit}
+          className="w-full px-4 py-3 rounded-lg font-semibold text-sm bg-emerald-600 hover:bg-emerald-500 text-white"
+        >
+          Try Again
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <button
+      onClick={handleSubmit}
+      disabled={status === 'submitting'}
+      className={`w-full px-4 py-3 rounded-lg font-semibold text-sm transition-all ${
+        status === 'submitting'
+          ? "bg-emerald-600 text-white cursor-wait"
+          : "bg-emerald-600 hover:bg-emerald-500 text-white"
+      }`}
+    >
+      {status === 'submitting' ? (
+        <span className="flex items-center justify-center gap-2">
+          <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+          Submitting via Trading SDK...
+        </span>
+      ) : (
+        "Create Order"
+      )}
+    </button>
   );
 }
