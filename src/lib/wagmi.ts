@@ -2,8 +2,8 @@ import { getDefaultConfig } from "@rainbow-me/rainbowkit";
 import { arbitrum, bsc } from "wagmi/chains";
 import { defineChain } from "viem";
 
-// Define Unichain mainnet
-const unichain = defineChain({
+// Define Unichain mainnet (currently not used but available for future use)
+export const unichain = defineChain({
   id: 130,
   name: "Unichain",
   nativeCurrency: {

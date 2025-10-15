@@ -2,83 +2,10 @@
 
 import { Chat } from "@/components/Chat";
 import { WalletConnect } from "@/components/WalletConnect";
-import { useAccount, useWalletClient } from "wagmi";
-import { providers } from "ethers";
-import { executeSwapClient } from "@/lib/swapClient";
-import { useState } from "react";
+import { useAccount } from "wagmi";
 
 export default function Home() {
   const { address } = useAccount();
-  const { data: walletClient } = useWalletClient();
-  const [isExecuting, setIsExecuting] = useState(false);
-  const [status, setStatus] = useState("");
-
-  const handleExecuteSwap = async (transactionData: {
-    fromToken: string;
-    toToken: string;
-    amount: string;
-    slippage: string;
-  }) => {
-    if (!walletClient || !address) {
-      setStatus("Please connect your wallet first");
-      return;
-    }
-
-    try {
-      setIsExecuting(true);
-      setStatus("Getting swap quote...");
-
-      const quoteResponse = await fetch("/api/swap", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          fromToken: transactionData.fromToken,
-          toToken: transactionData.toToken,
-          amount: transactionData.amount,
-          slippage: transactionData.slippage
-        })
-      });
-
-      const quoteData = await quoteResponse.json();
-
-      if (!quoteData.success) {
-        throw new Error(quoteData.error || "Failed to get quote");
-      }
-
-      setStatus("Preparing transaction...");
-
-      const provider = new providers.Web3Provider(
-        walletClient as unknown as providers.ExternalProvider
-      );
-      const signer = provider.getSigner();
-
-      setStatus(
-        `Executing swap: ${transactionData.amount} ${transactionData.fromToken} → ${transactionData.toToken}`
-      );
-
-      const receipt = await executeSwapClient(
-        transactionData.fromToken,
-        transactionData.toToken,
-        transactionData.amount,
-        quoteData.quote.outputAmount,
-        address,
-        signer,
-        parseFloat(transactionData.slippage)
-      );
-
-      setStatus(`Swap successful! Transaction: ${receipt.transactionHash}`);
-      console.log("Swap completed:", receipt);
-    } catch (error) {
-      console.error("Swap failed:", error);
-      setStatus(
-        `Swap failed: ${
-          error instanceof Error ? error.message : "Unknown error"
-        }`
-      );
-    } finally {
-      setIsExecuting(false);
-    }
-  };
 
   return (
     <div className="min-h-screen">
@@ -110,47 +37,6 @@ export default function Home() {
             Trade tokens using natural language.
           </p> */}
         </div>
-
-        {/* Status Messages */}
-        {status && (
-          <div className="max-w-3xl mx-auto mb-6">
-            <div
-              className={`glass-strong rounded-xl p-4 border ${
-                status.includes("failed") || status.includes("error")
-                  ? "border-red-500/30 bg-red-500/10"
-                  : status.includes("successful")
-                  ? "border-emerald-500/30 bg-emerald-500/10"
-                  : "border-primary-500/30 bg-primary-500/10"
-              }`}
-            >
-              <p
-                className={`text-sm ${
-                  status.includes("failed") || status.includes("error")
-                    ? "text-red-400"
-                    : status.includes("successful")
-                    ? "text-emerald-400"
-                    : "text-primary-400"
-                }`}
-              >
-                {status}
-              </p>
-            </div>
-          </div>
-        )}
-
-        {/* Loading Overlay */}
-        {isExecuting && (
-          <div className="max-w-3xl mx-auto mb-6">
-            <div className="glass-strong rounded-xl p-4 border border-primary-500/30">
-              <div className="flex items-center gap-3">
-                <div className="w-5 h-5 border-2 border-primary-500 border-t-transparent rounded-full animate-spin"></div>
-                <span className="text-sm text-gray-300">
-                  Processing transaction...
-                </span>
-              </div>
-            </div>
-          </div>
-        )}
 
         {/* Chat Interface */}
         <div className="max-w-4xl mx-auto mb-12">
