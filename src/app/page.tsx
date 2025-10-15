@@ -154,7 +154,7 @@ export default function Home() {
 
         {/* Chat Interface */}
         <div className="max-w-4xl mx-auto mb-12">
-          <Chat walletAddress={address} />
+          <Chat />
         </div>
 
         {/* Features Grid */}

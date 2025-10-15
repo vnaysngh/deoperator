@@ -17,25 +17,35 @@ import {
 import type { Address } from "viem";
 import { formatUnits, parseUnits } from "viem";
 
-interface ChatProps {
-  walletAddress?: string;
-}
-
-export function Chat({ walletAddress }: ChatProps) {
+export function Chat() {
   const [input, setInput] = useState("");
-  const { messages, sendMessage, status } = useChat({
-    transport: new DefaultChatTransport({
-      api: "/api/chat",
-      headers: {
-        "x-wallet-address": walletAddress || ""
-      }
-    })
-  });
-  const messagesEndRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
   const { address } = useAccount();
   const publicClient = usePublicClient();
   const { data: walletClient } = useWalletClient();
+
+  // Use a ref to always get the latest address value
+  const addressRef = useRef<string | undefined>(address);
+  addressRef.current = address;
+
+  const { messages, sendMessage, status } = useChat({
+    transport: new DefaultChatTransport({
+      api: "/api/chat",
+      fetch: async (input: RequestInfo | URL, init?: RequestInit) => {
+        const currentAddress = addressRef.current || "";
+        console.log('[CLIENT] Sending request with wallet address:', currentAddress);
+        return fetch(input, {
+          ...init,
+          headers: {
+            ...(init?.headers as Record<string, string>),
+            "x-wallet-address": currentAddress
+          }
+        });
+      }
+    })
+  });
+
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -43,10 +53,10 @@ export function Chat({ walletAddress }: ChatProps) {
 
   useEffect(() => {
     scrollToBottom();
-    if (inputRef.current && walletAddress && status !== "streaming") {
+    if (inputRef.current && address && status !== "streaming") {
       inputRef.current.focus();
     }
-  }, [messages, walletAddress, status]);
+  }, [messages, address, status]);
 
   return (
     <div className="bg-black rounded-2xl overflow-hidden shadow-2xl flex flex-col max-h-[80vh]">
@@ -142,6 +152,64 @@ export function Chat({ walletAddress }: ChatProps) {
                           );
                         }
 
+                        // Wallet balances display
+                        const isBalances =
+                          output?.success && output?.balances && Array.isArray(output.balances);
+                        if (isBalances) {
+                          return (
+                            <div
+                              key={index}
+                              className="mt-3 pt-3 border-t border-white/10"
+                            >
+                              <div className="glass-strong rounded-lg p-4">
+                                <div className="mb-3">
+                                  <div className="flex items-center gap-2 mb-2">
+                                    <div className="w-2 h-2 rounded-full bg-emerald-500"></div>
+                                    <span className="text-xs font-semibold text-emerald-400">
+                                      Wallet Balances on {output.chain}
+                                    </span>
+                                  </div>
+                                  <div className="text-xs text-gray-400">
+                                    Total: ${output.totalValue?.toFixed(2) || '0.00'}
+                                  </div>
+                                </div>
+                                <div className="space-y-2">
+                                  {output.balances.map((bal: any, i: number) => (
+                                    <div
+                                      key={i}
+                                      className="flex items-center justify-between p-2 rounded-lg bg-white/5 hover:bg-white/10 transition-colors"
+                                    >
+                                      <div className="flex-1">
+                                        <div className="text-sm font-semibold text-white">
+                                          {bal.symbol}
+                                        </div>
+                                        <div className="text-xs text-gray-400">
+                                          {bal.name}
+                                        </div>
+                                      </div>
+                                      <div className="text-right">
+                                        <div className="text-sm font-semibold text-white">
+                                          {parseFloat(bal.balance).toFixed(6)}
+                                        </div>
+                                        {bal.usdValue !== undefined && (
+                                          <div className="text-xs text-gray-400">
+                                            ${bal.usdValue.toFixed(2)}
+                                          </div>
+                                        )}
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                                {output.count > output.balances.length && (
+                                  <div className="mt-3 pt-3 border-t border-white/10 text-xs text-gray-400 text-center">
+                                    Showing top {output.balances.length} of {output.count} tokens
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        }
+
                         // Price display
                         const isPrice =
                           output?.success && output?.price && output?.message;
@@ -166,12 +234,56 @@ export function Chat({ walletAddress }: ChatProps) {
                           );
                         }
 
-                        // Error handling
-                        if (
-                          output?.success === false &&
-                          "userMessage" in output
-                        ) {
-                          return null;
+                        // UNIVERSAL FALLBACK HANDLER
+                        // CRITICAL ARCHITECTURAL DECISION:
+                        // We CANNOT rely on AI to always generate text after tool calls.
+                        // OpenAI GPT-4 frequently stops with finishReason: 'tool-calls' and text: ''
+                        // Therefore, EVERY tool output with a 'message' or 'userMessage' field
+                        // MUST be rendered client-side as a fallback.
+
+                        // 1. Error handling (highest priority)
+                        if (output?.success === false && "userMessage" in output) {
+                          return (
+                            <div
+                              key={index}
+                              className="mt-3 pt-3 border-t border-white/10"
+                            >
+                              <div className="glass-strong rounded-lg p-4">
+                                <div className="flex items-center gap-2 mb-2">
+                                  <div className="w-2 h-2 rounded-full bg-amber-500"></div>
+                                  <span className="text-xs font-semibold text-amber-400">
+                                    Notice
+                                  </span>
+                                </div>
+                                <div className="text-white text-sm">
+                                  {output.userMessage}
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        }
+
+                        // 2. Success messages with 'message' field
+                        // This catches: singleTokenResponse, price responses, and any future tools
+                        if (output?.success === true && output?.message && typeof output.message === 'string') {
+                          return (
+                            <div
+                              key={index}
+                              className="mt-3 pt-3 border-t border-white/10"
+                            >
+                              <div className="glass-strong rounded-lg p-4">
+                                <div className="flex items-center gap-2 mb-2">
+                                  <div className="w-2 h-2 rounded-full bg-emerald-500"></div>
+                                  <span className="text-xs font-semibold text-emerald-400">
+                                    Result
+                                  </span>
+                                </div>
+                                <div className="text-white text-sm whitespace-pre-wrap">
+                                  {output.message}
+                                </div>
+                              </div>
+                            </div>
+                          );
                         }
 
                         return null;
@@ -220,7 +332,7 @@ export function Chat({ walletAddress }: ChatProps) {
       <form
         onSubmit={(e) => {
           e.preventDefault();
-          if (input.trim() && walletAddress) {
+          if (input.trim() && address) {
             sendMessage({
               text: input
             });
@@ -235,11 +347,11 @@ export function Chat({ walletAddress }: ChatProps) {
             value={input}
             onChange={(e) => setInput(e.target.value)}
             placeholder={
-              walletAddress
+              address
                 ? "Ask me to swap tokens..."
                 : "Connect your wallet to start trading"
             }
-            disabled={!walletAddress || status === "streaming"}
+            disabled={!address || status === "streaming"}
             className="flex-1 px-0 py-3 bg-transparent border-b border-white/10 focus:outline-none focus:border-emerald-500/50 disabled:opacity-50 disabled:cursor-not-allowed text-white placeholder:text-gray-500 transition-colors caret-emerald-500"
           />
         </div>
@@ -297,27 +409,73 @@ function QuoteDisplay({
           chainId: tokenInfo.chainId
         });
 
-        if (!quoteResponse.quoteResults) {
-          throw new Error("Failed to get quote");
+        console.log("[CLIENT] Quote response:", quoteResponse);
+
+        // Check if quote failed or has no results
+        if (!quoteResponse || !quoteResponse.quoteResults) {
+          console.error("[CLIENT] No quoteResults in response");
+          setError("Unable to get a quote for this trade. This may be due to insufficient liquidity or the trade amount being too small. Try adjusting the amount or choosing different tokens.");
+          setLoading(false);
+          return;
         }
 
+        console.log("[CLIENT] quoteResults:", quoteResponse.quoteResults);
+
         const { amountsAndCosts } = quoteResponse.quoteResults;
-        const buyAmount = amountsAndCosts.afterSlippage.buyAmount;
-        const feeAmount = amountsAndCosts.costs.networkFee.amountInSellCurrency;
+
+        console.log("[CLIENT] amountsAndCosts:", amountsAndCosts);
+
+        // Validate the response structure
+        if (!amountsAndCosts ||
+            !amountsAndCosts.afterSlippage ||
+            !amountsAndCosts.afterSlippage.buyAmount ||
+            !amountsAndCosts.costs ||
+            !amountsAndCosts.costs.networkFee) {
+          console.error("[CLIENT] Invalid quote response structure:", amountsAndCosts);
+          setError("Unable to get a quote for this trade. There may be insufficient liquidity for this token pair. Try using a smaller amount or different tokens.");
+          setLoading(false);
+          return;
+        }
+
+        // Use beforeNetworkCosts for the quote (matches CoW Swap UI)
+        // afterSlippage is what you'll actually receive (after fees)
+        const buyAmountBeforeFees = amountsAndCosts.beforeNetworkCosts.buyAmount;
+        const buyAmountAfterFees = amountsAndCosts.afterSlippage.buyAmount;
+        const networkFeeInSellToken = amountsAndCosts.costs.networkFee.amountInSellCurrency;
+
+        console.log("[CLIENT] Quote values:", {
+          buyAmountBeforeFees: buyAmountBeforeFees.toString(),
+          buyAmountAfterFees: buyAmountAfterFees.toString(),
+          networkFeeInSellToken: networkFeeInSellToken.toString()
+        });
 
         setQuote({
           buyAmount: (
-            Number(buyAmount) / Math.pow(10, tokenInfo.toTokenDecimals)
+            Number(buyAmountBeforeFees) / Math.pow(10, tokenInfo.toTokenDecimals)
+          ).toFixed(6),
+          buyAmountAfterFees: (
+            Number(buyAmountAfterFees) / Math.pow(10, tokenInfo.toTokenDecimals)
           ).toFixed(6),
           feeAmount: (
-            Number(feeAmount) / Math.pow(10, tokenInfo.fromTokenDecimals)
+            Number(networkFeeInSellToken) / Math.pow(10, tokenInfo.fromTokenDecimals)
           ).toFixed(6),
           postSwapOrderFromQuote: quoteResponse.postSwapOrderFromQuote
         });
         setLoading(false);
       } catch (err) {
         console.error("[CLIENT] Quote fetch error:", err);
-        setError(err instanceof Error ? err.message : "Failed to get quote");
+
+        // Check for specific error messages
+        const errorMessage = err instanceof Error ? err.message : String(err);
+
+        if (errorMessage.toLowerCase().includes("liquidity")) {
+          setError("Insufficient liquidity for this trade. Try using a smaller amount or different tokens.");
+        } else if (errorMessage.toLowerCase().includes("slippage")) {
+          setError("Price slippage too high for this trade. Try adjusting the amount or try again later.");
+        } else {
+          setError("Unable to get a quote for this trade. Please try again or use different tokens.");
+        }
+
         setLoading(false);
       }
     }
@@ -336,14 +494,9 @@ function QuoteDisplay({
     );
   }
 
+  // Don't render error UI - let the AI assistant handle the error message conversationally
   if (error) {
-    return (
-      <div className="mt-3 pt-3 border-t border-white/10">
-        <div className="glass-strong rounded-lg p-4">
-          <div className="text-red-400 text-sm">{error}</div>
-        </div>
-      </div>
-    );
+    return null;
   }
 
   return (
@@ -370,20 +523,22 @@ function QuoteDisplay({
             </div>
           </div>
           <div>
-            <div className="text-gray-500 text-xs">To</div>
+            <div className="text-gray-500 text-xs">To (est.)</div>
             <div className="text-white font-semibold">
               {quote.buyAmount} {tokenInfo.toToken}
             </div>
           </div>
           <div>
-            <div className="text-gray-500 text-xs">Fee</div>
+            <div className="text-gray-500 text-xs">Network Fee</div>
             <div className="text-white">
               {quote.feeAmount} {tokenInfo.fromToken}
             </div>
           </div>
           <div>
-            <div className="text-gray-500 text-xs">Price Impact</div>
-            <div className="text-white">&lt; 0.01%</div>
+            <div className="text-gray-500 text-xs">Receive (incl. costs)</div>
+            <div className="text-white font-semibold">
+              {quote.buyAmountAfterFees} {tokenInfo.toToken}
+            </div>
           </div>
         </div>
         <div className="pt-2 mt-2 border-t border-white/5">

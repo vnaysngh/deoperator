@@ -4,6 +4,8 @@ import { z } from "zod";
 import { getTokenBySymbol, normalizeTokenSymbol, formatTokenAmount } from "@/lib/tokens";
 import { getTokenUSDPrice } from "@/lib/sushiswap";
 import { getChainName } from "@/lib/chains";
+import { createPublicClient, http, type Address } from "viem";
+import { arbitrum, bsc } from "viem/chains";
 
 export const maxDuration = 30;
 
@@ -11,15 +13,46 @@ export async function POST(req: Request) {
   const { messages }: { messages: UIMessage[] } = await req.json();
   const walletAddress = req.headers.get("x-wallet-address") || "";
 
+  console.log('[API] POST /api/chat - Wallet address from headers:', walletAddress);
+  console.log('[API] POST /api/chat - Received messages:', JSON.stringify(messages, null, 2));
+
   const result = streamText({
     model: openai("gpt-4-turbo"),
     messages: convertToModelMessages(messages),
+    maxSteps: 10,
+    onStepFinish: ({ text, toolCalls, toolResults, finishReason, usage }) => {
+      console.log('[AI] Step finished:', {
+        text,
+        toolCalls: toolCalls?.length || 0,
+        toolResults: toolResults?.length || 0,
+        finishReason,
+        usage
+      });
+      if (toolResults && toolResults.length > 0) {
+        console.log('[AI] Tool results:', JSON.stringify(toolResults, null, 2));
+      }
+
+      // CRITICAL: Warn if AI finished with tool calls but no text response
+      if (finishReason === 'tool-calls' && (!text || text.trim() === '')) {
+        console.warn('[AI] ⚠️ WARNING: AI stopped after tool calls without generating text response!');
+        console.warn('[AI] This means the user may see blank UI if client-side doesnt handle tool output');
+      }
+    },
+    onFinish: ({ text, toolCalls, toolResults, finishReason, usage }) => {
+      console.log('[AI] Final finish:', {
+        text,
+        toolCalls: toolCalls?.length || 0,
+        toolResults: toolResults?.length || 0,
+        finishReason,
+        usage
+      });
+    },
     system: `You are a helpful multi-chain trading assistant powered by CoW Protocol. You help users get quotes and create orders for token swaps using intent-based trading across multiple blockchains.
 
       ${
         walletAddress
-          ? `User's connected wallet address: ${walletAddress}`
-          : "User has not connected their wallet yet. Ask them to connect their wallet before creating orders."
+          ? `🟢 WALLET CONNECTED - User's wallet address: ${walletAddress}. You can now fetch balances, create swaps, and perform all operations without asking them to connect.`
+          : "🔴 WALLET NOT CONNECTED - User has not connected their wallet yet. Ask them to connect their wallet before performing any operations."
       }
 
       🔗 Supported Chains:
@@ -38,10 +71,68 @@ export async function POST(req: Request) {
       Token Lookup Strategy:
       - When user asks for a token, use the token symbol they provide directly
       - Trust the token list - if it has the token on that chain, use it
-      - If token is NOT found, provide a helpful error message suggesting alternatives
+      - If user provides a contract address (0x followed by 40 hex characters), use it directly for lookups
+      - Contract addresses work for ANY token, even if not in our token list
+      - If token symbol is NOT found, ask user if they have the contract address
       - Only ask for clarification if the token genuinely doesn't exist on the requested chain
 
-      🚨 CRITICAL RULE - TWO DIFFERENT USE CASES:
+      🚨 CRITICAL RULE - DIFFERENT USE CASES:
+
+      USE CASE 0: USER ASKS FOR WALLET BALANCES
+      When user asks: "show my balances", "what tokens do I have", "list my tokens", "show tokens worth more than $X", "what's my USDC balance", "fetch my wallet balances", etc.
+
+      IMPORTANT: If wallet is connected (🟢 above), you can IMMEDIATELY call the balance tools. DO NOT ask them to connect - they're already connected!
+
+      TWO DIFFERENT RESPONSE FORMATS:
+
+      A) SINGLE TOKEN QUERY → Use conversational text response
+      - When user asks for ONE specific token: "what's my USDC balance", "how much ARB do I have", "show my APEX balance"
+      - Use getSpecificBalances tool
+      - Respond with natural text: "Your APEX balance is 132.430775 APEX, which is equivalent to $149.00 USD"
+      - DO NOT show the balance table for single token queries
+      - Always include USD value if available
+
+      B) PORTFOLIO/MULTIPLE TOKENS → Use table/list format
+      - When user asks for ALL tokens: "show my balances", "list all my tokens", "what's in my wallet", "show tokens worth $10+"
+      - Use getWalletBalances tool
+      - The UI will automatically show the balance table
+      - Sort by value (highest first)
+
+      getSpecificBalances accepts BOTH token symbols AND contract addresses:
+      - Symbol: "what's my USDC balance" → tokens=['USDC']
+      - Address: "here is the token address 0x123..." → tokens=['0x123...']
+      - If user provides a contract address (starts with 0x, 42 chars), use it directly
+
+      Examples:
+
+      PORTFOLIO QUERIES (show table):
+      ✅ User: "show my balances on Arbitrum" (wallet connected)
+        Response: *calls getWalletBalances* → UI shows balance table
+
+      ✅ User: "list all my tokens on BNB Chain" (wallet connected)
+        Response: *calls getWalletBalances* → UI shows balance table
+
+      ✅ User: "show tokens worth more than $1 on BNB Chain" (wallet connected)
+        Response: *calls getWalletBalances with minUsdValue=1* → UI shows balance table
+
+      ✅ User: "show my top 10 tokens on Arbitrum" (wallet connected)
+        Response: *calls getWalletBalances with maxResults=10* → UI shows balance table
+
+      SINGLE TOKEN QUERIES (conversational text):
+      ✅ User: "what's my USDC balance on Arbitrum" (wallet connected)
+        Response: *calls getSpecificBalances with tokens=['USDC'], chainId=42161*
+        You say: "Your USDC balance is 1,234.567890 USDC, which is equivalent to $1,234.57 USD"
+
+      ✅ User: "how much ARB do I have" (wallet connected, on Arbitrum)
+        Response: *calls getSpecificBalances with tokens=['ARB'], chainId=42161*
+        You say: "Your ARB balance is 50.123456 ARB, which is equivalent to $45.67 USD"
+
+      ✅ User: "APEX token on arbitrum" + provides address 0x61a1ff55c5216b636a294a07d77c6f4df10d3b56
+        Response: *calls getSpecificBalances with tokens=['0x61a1ff55c5216b636a294a07d77c6f4df10d3b56'], chainId=42161*
+        You say: "Your APEX balance is 132.430775 APEX" (with or without USD depending on price availability)
+
+      ✅ User: "fetch my wallet balances" (wallet connected, no chain specified)
+        Response: "On which chain would you like to check? We support Arbitrum and BNB Chain."
 
       USE CASE 1: USER ASKS FOR PRICE (USD)
       When user asks: "What's the price of ARB?" or "How much is ETH?" or "ARB price"
@@ -91,6 +182,19 @@ export async function POST(req: Request) {
       - If user says "swap ARB to USDC" → Ask for amount and chain
       - If user says "swap 10 ARB to USDC" → Ask for chain
       - If user says "swap 10 ARB to USDC on Arbitrum" → Have everything!
+
+      ⚠️ SPECIAL CASE - "swap my whole/all/entire balance":
+      When user says "swap my whole USDC balance" or "swap all my USDC" or "swap my entire balance":
+      - Use the getSwapQuoteForEntireBalance tool (NOT getSpecificBalances + getSwapQuote)
+      - This tool fetches balance AND gets quote in ONE step
+      - It returns needsClientQuote: true which triggers the UI to show the quote
+
+      Example:
+      User: "swap my whole USDC balance to ARB on arbitrum"
+      → You: *calls getSwapQuoteForEntireBalance(fromToken: 'USDC', toToken: 'ARB', chainId: 42161)*
+      → Tool: Returns balance + quote info with message "You have 1.736251 USDC. Getting quote to swap it all for ARB..."
+      → You: Show the quote UI (happens automatically via needsClientQuote)
+      → User sees: Quote display with "Create Order" button
 
       STEP 2: Get Quote (use getSwapQuote tool)
       - ⚠️ CRITICAL: You MUST call getSwapQuote tool for EVERY new swap request, even if you recently got a quote for the same token pair
@@ -153,9 +257,13 @@ export async function POST(req: Request) {
       ❌ Showing the JSON structure in ANY form
       ❌ Mentioning "success", "error", "userMessage" fields
       ❌ Using code blocks or pre-formatted text for errors
+      ❌ Leaving the user hanging with no response - ALWAYS reply with the userMessage
 
       ✅ REQUIRED BEHAVIOR - ALWAYS DO THIS:
-      When tool returns error, respond with ONLY the userMessage text as plain conversational text.
+      - When tool returns error, respond with ONLY the userMessage text as plain conversational text
+      - NEVER let the conversation end without a response from you
+      - ALWAYS provide feedback to the user, whether it's an error or success
+      - The last message in the conversation should ALWAYS be from you (the assistant), never from a tool
 
       CONCRETE EXAMPLES:
 
@@ -171,9 +279,13 @@ export async function POST(req: Request) {
       Tool output: {"success": true, "price": "650.50", "message": "ETH is currently $650.50 USD on Ethereum"}
       YOUR RESPONSE: "ETH is currently $650.50 USD on Ethereum"
 
+      Example 4 (Token not found):
+      Tool output: {"success": false, "userMessage": "I couldn't find APEX on BNB Chain. Could you double-check the token symbol? If you have the token contract address, I can look it up directly for you.", "error": "Tokens not found"}
+      YOUR RESPONSE: "I couldn't find APEX on BNB Chain. Could you double-check the token symbol? If you have the token contract address, I can look it up directly for you."
+
       🚨 CRITICAL: The UI will NOT show tool outputs. You MUST speak the userMessage yourself in your text response.
 
-      Think of yourself as translating technical JSON into natural human speech. The user should NEVER see JSON.
+      🚨 NEVER SILENT: You must ALWAYS respond after a tool call. If a tool fails, tell the user what went wrong. If it succeeds, tell them the result. NEVER leave the user hanging.
 
       Be conversational, helpful, and ALWAYS prioritize accuracy over speed.`,
     tools: {
@@ -214,27 +326,75 @@ export async function POST(req: Request) {
             const chainName = getChainName(chainId);
 
             // Get token information
-            const fromTokenInfo = getTokenBySymbol(normalizedFrom, chainId);
-            const toTokenInfo = getTokenBySymbol(normalizedTo, chainId);
+            const fromTokenInfo = await getTokenBySymbol(normalizedFrom, chainId);
+            const toTokenInfo = await getTokenBySymbol(normalizedTo, chainId);
 
             if (!fromTokenInfo) {
-              return {
+              const errorResult = {
                 success: false,
-                userMessage: `I couldn't find ${fromToken} on ${chainName}. Could you double-check the token name?`,
+                userMessage: `I couldn't find ${fromToken} on ${chainName}. Could you double-check the token symbol? If you have the contract address (0x...), I can look it up directly. Popular tokens include WETH, USDC, USDT, ARB, and DAI.`,
                 error: `Token not found: ${fromToken}`
               };
+              console.log('[TOOL:getSwapQuote] Returning from token error:', JSON.stringify(errorResult, null, 2));
+              return errorResult;
             }
 
             if (!toTokenInfo) {
-              return {
+              const errorResult = {
                 success: false,
-                userMessage: `I couldn't find ${toToken} on ${chainName}. Could you double-check the token name?`,
+                userMessage: `I couldn't find ${toToken} on ${chainName}. Could you double-check the token symbol? If you have the contract address (0x...), I can look it up directly. Popular tokens include WETH, USDC, USDT, ARB, and DAI.`,
                 error: `Token not found: ${toToken}`
               };
+              console.log('[TOOL:getSwapQuote] Returning to token error:', JSON.stringify(errorResult, null, 2));
+              return errorResult;
+            }
+
+            // Try to fetch a quote from CoW Protocol to check if there's liquidity
+            // This is a server-side check to catch liquidity issues early
+            try {
+              const { parseUnits } = await import("viem");
+              const sellAmount = parseUnits(amount, fromTokenInfo.decimals);
+
+              // Make a basic quote request to CoW API to check liquidity
+              const quoteUrl = `https://api.cow.fi/${chainId === 42161 ? 'arbitrum_one' : chainId === 56 ? 'bsc' : 'mainnet'}/api/v1/quote`;
+
+              const quoteResponse = await fetch(quoteUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  sellToken: fromTokenInfo.address,
+                  buyToken: toTokenInfo.address,
+                  sellAmountBeforeFee: sellAmount.toString(),
+                  from: '0x0000000000000000000000000000000000000000', // Dummy address for quote check
+                  kind: 'sell',
+                  priceQuality: 'fast'
+                })
+              });
+
+              if (!quoteResponse.ok) {
+                const errorText = await quoteResponse.text();
+                console.log('[TOOL:getSwapQuote] Quote check failed:', quoteResponse.status, errorText);
+
+                // Check if it's a liquidity issue
+                if (errorText.toLowerCase().includes('liquidity') || quoteResponse.status === 404) {
+                  const errorMessage = `There isn't enough liquidity to swap ${amount} ${normalizedFrom} for ${normalizedTo} on ${chainName}. Try using a smaller amount or different tokens.`;
+                  console.log('[TOOL:getSwapQuote] Returning liquidity error:', errorMessage);
+                  const liquidityErrorResult = {
+                    success: false,
+                    userMessage: errorMessage,
+                    error: 'Insufficient liquidity'
+                  };
+                  console.log('[TOOL:getSwapQuote] Liquidity error result:', JSON.stringify(liquidityErrorResult, null, 2));
+                  return liquidityErrorResult;
+                }
+              }
+            } catch (liquidityCheckError) {
+              console.log('[TOOL:getSwapQuote] Liquidity check failed, continuing anyway:', liquidityCheckError);
+              // Continue anyway - the client-side SDK will handle it
             }
 
             // Return token info for client-side SDK to use
-            return {
+            const successResult = {
               success: true,
               chain: chainName,
               chainId,
@@ -248,13 +408,17 @@ export async function POST(req: Request) {
               // Instruction for the client to fetch quote
               needsClientQuote: true
             };
+            console.log('[TOOL:getSwapQuote] Returning success result:', JSON.stringify(successResult, null, 2));
+            return successResult;
           } catch (error) {
-            console.error('[TOOL:getSwapQuote] Error:', error);
-            return {
+            console.error('[TOOL:getSwapQuote] Caught exception:', error);
+            const exceptionResult = {
               success: false,
               userMessage: "Something went wrong. Want to try again?",
               error: error instanceof Error ? error.message : "Unknown error"
             };
+            console.log('[TOOL:getSwapQuote] Returning exception result:', JSON.stringify(exceptionResult, null, 2));
+            return exceptionResult;
           }
         }
       }),
@@ -299,8 +463,8 @@ export async function POST(req: Request) {
             const chainName = getChainName(chainId);
 
             // Get token information
-            const fromTokenInfo = getTokenBySymbol(normalizedFrom, chainId);
-            const toTokenInfo = getTokenBySymbol(normalizedTo, chainId);
+            const fromTokenInfo = await getTokenBySymbol(normalizedFrom, chainId);
+            const toTokenInfo = await getTokenBySymbol(normalizedTo, chainId);
 
             if (!fromTokenInfo || !toTokenInfo) {
               return {
@@ -427,9 +591,423 @@ export async function POST(req: Request) {
             };
           }
         }
+      }),
+      getWalletBalances: tool({
+        description:
+          "Get all token balances in the user's wallet on a specific chain. Can filter by minimum USD value and limit results. Use this when user asks: 'show my balances', 'what tokens do I have', 'list my tokens', 'show tokens worth more than $X', etc.",
+        inputSchema: z.object({
+          chainId: z
+            .number()
+            .describe(
+              "Chain ID - REQUIRED. 42161=Arbitrum, 56=BNB. Ask user if not specified."
+            ),
+          minUsdValue: z
+            .number()
+            .optional()
+            .describe(
+              "Minimum USD value filter (e.g., 1 means only show tokens worth $1 or more)"
+            ),
+          maxResults: z
+            .number()
+            .optional()
+            .describe(
+              "Maximum number of results to return (default: 20, useful for 'show top 10 tokens')"
+            )
+        }),
+        execute: async ({ chainId, minUsdValue, maxResults = 20 }) => {
+          console.log('[TOOL:getWalletBalances] Fetching wallet balances:', {
+            chainId,
+            walletAddress,
+            minUsdValue,
+            maxResults
+          });
+
+          if (!walletAddress) {
+            return {
+              success: false,
+              userMessage: "I don't have access to your wallet address. Please refresh the page and try again.",
+              error: "Wallet address not provided in request headers"
+            };
+          }
+
+          try {
+            const chainName = getChainName(chainId);
+
+            // Create public client for the chain
+            const chain = chainId === 42161 ? arbitrum : bsc;
+            const publicClient = createPublicClient({
+              chain,
+              transport: http()
+            });
+
+            // Import balance utilities
+            const {
+              getAllTokenBalances,
+              calculatePortfolioValue,
+              formatTokenBalance
+            } = await import("@/lib/wallet-balances");
+
+            // Fetch all balances
+            const balances = await getAllTokenBalances(
+              publicClient,
+              walletAddress as Address,
+              chainId,
+              {
+                includeZeroBalances: false,
+                minUsdValue,
+                maxResults
+              }
+            );
+
+            if (balances.length === 0) {
+              return {
+                success: false,
+                userMessage: `No tokens found in your wallet on ${chainName}${
+                  minUsdValue ? ` with value >= $${minUsdValue}` : ""
+                }.`,
+                error: "No balances found"
+              };
+            }
+
+            // Calculate total portfolio value
+            const totalValue = calculatePortfolioValue(balances);
+
+            // Format balances for display
+            const formattedBalances = balances.map((b) => ({
+              symbol: b.token.symbol,
+              name: b.token.name,
+              balance: b.balance,
+              usdValue: b.usdValue,
+              usdPrice: b.usdPrice,
+              formatted: formatTokenBalance(b)
+            }));
+
+            return {
+              success: true,
+              chain: chainName,
+              chainId,
+              balances: formattedBalances,
+              totalValue,
+              count: balances.length,
+              message: `Found ${balances.length} tokens${
+                minUsdValue ? ` worth $${minUsdValue}+ each` : ""
+              }. Total portfolio value: $${totalValue.toFixed(2)}`
+            };
+          } catch (error) {
+            console.error('[TOOL:getWalletBalances] Error:', error);
+            return {
+              success: false,
+              userMessage:
+                "Having trouble fetching your balances. Want to try again?",
+              error: error instanceof Error ? error.message : "Unknown error"
+            };
+          }
+        }
+      }),
+      getSpecificBalances: tool({
+        description:
+          "Get balances for specific tokens in the user's wallet. Use this when user asks about specific tokens like 'what's my USDC balance', 'how much ARB do I have', 'show my WETH and USDT'. Accepts EITHER token symbols OR contract addresses.",
+        inputSchema: z.object({
+          tokens: z
+            .array(z.string())
+            .describe(
+              "Array of token symbols OR contract addresses to check (e.g., ['USDC', 'ARB'] or ['0x123...', '0x456...'])"
+            ),
+          chainId: z
+            .number()
+            .describe(
+              "Chain ID - REQUIRED. 42161=Arbitrum, 56=BNB. Ask user if not specified."
+            )
+        }),
+        execute: async ({ tokens, chainId }) => {
+          console.log('[TOOL:getSpecificBalances] Fetching specific balances:', {
+            tokens,
+            chainId,
+            walletAddress
+          });
+
+          if (!walletAddress) {
+            return {
+              success: false,
+              userMessage: "I don't have access to your wallet address. Please refresh the page and try again.",
+              error: "Wallet address not provided in request headers"
+            };
+          }
+
+          try {
+            const chainName = getChainName(chainId);
+
+            // Create public client for the chain
+            const chain = chainId === 42161 ? arbitrum : bsc;
+            const publicClient = createPublicClient({
+              chain,
+              transport: http()
+            });
+
+            // Import token lookup functions
+            const { getTokenBySymbol, getTokenByAddress } = await import("@/lib/tokens");
+
+            // Get token info for all requested tokens (support both symbols and addresses)
+            const tokenInfos = await Promise.all(
+              tokens.map(async (input) => {
+                // Check if input is a contract address (starts with 0x and is 42 chars)
+                if (input.startsWith('0x') && input.length === 42) {
+                  console.log(`[TOKENS] Looking up token by address: ${input}`);
+                  return await getTokenByAddress(input, chainId);
+                } else {
+                  // Treat as symbol
+                  const normalized = normalizeTokenSymbol(input, chainId);
+                  return await getTokenBySymbol(normalized, chainId);
+                }
+              })
+            );
+
+            // Filter out tokens that weren't found and track which ones failed
+            const validTokens = tokenInfos.filter(
+              (t): t is NonNullable<typeof t> => t !== undefined
+            );
+
+            if (validTokens.length === 0) {
+              const tokenList = tokens.join(", ");
+              return {
+                success: false,
+                userMessage: `I couldn't find ${tokenList} on ${chainName}. Could you double-check the token symbol? If you have the token contract address, I can look it up directly for you. Otherwise, try a different token like WETH, USDC, or USDT.`,
+                error: "Tokens not found"
+              };
+            }
+
+            // If some tokens were found but not all, let the user know
+            const missingTokens = tokens.filter((symbol, i) => !tokenInfos[i]);
+            const foundTokenSymbols = validTokens.map(t => t.symbol).join(", ");
+
+            // Import balance utilities
+            const {
+              getSpecificTokenBalances,
+              formatTokenBalance
+            } = await import("@/lib/wallet-balances");
+
+            // Fetch balances
+            const balances = await getSpecificTokenBalances(
+              publicClient,
+              walletAddress as Address,
+              validTokens
+            );
+
+            // Format balances for display
+            const formattedBalances = balances.map((b) => ({
+              symbol: b.token.symbol,
+              name: b.token.name,
+              balance: b.balance,
+              usdValue: b.usdValue,
+              usdPrice: b.usdPrice,
+              formatted: formatTokenBalance(b)
+            }));
+
+            // Build a helpful message
+            let message = `Found balances for ${foundTokenSymbols} on ${chainName}`;
+            if (missingTokens.length > 0) {
+              message += `. Note: I couldn't find ${missingTokens.join(", ")} - please verify the symbol or provide the contract address.`;
+            }
+
+            // If this is a single token query, format as text response instead of table
+            const isSingleToken = formattedBalances.length === 1 && tokens.length === 1;
+
+            if (isSingleToken) {
+              const bal = formattedBalances[0];
+              const balanceText = `Your ${bal.symbol} balance is ${parseFloat(bal.balance).toFixed(6)} ${bal.symbol}`;
+              const usdText = bal.usdValue !== undefined
+                ? `, which is equivalent to $${bal.usdValue.toFixed(2)} USD`
+                : '';
+
+              return {
+                success: true,
+                chain: chainName,
+                chainId,
+                // Don't send balances array for single token - this prevents UI table from showing
+                singleTokenResponse: true,
+                message: balanceText + usdText,
+                tokenDetails: {
+                  symbol: bal.symbol,
+                  name: bal.name,
+                  balance: bal.balance,  // Available for AI to use in next tool call
+                  usdValue: bal.usdValue,
+                  usdPrice: bal.usdPrice
+                },
+                // Make it clear this is intermediate data for multi-step flows
+                continueWithSwap: {
+                  availableAmount: bal.balance,
+                  token: bal.symbol
+                }
+              };
+            }
+
+            return {
+              success: true,
+              chain: chainName,
+              chainId,
+              balances: formattedBalances,
+              message,
+              warning: missingTokens.length > 0 ? `Could not find: ${missingTokens.join(", ")}` : undefined
+            };
+          } catch (error) {
+            console.error('[TOOL:getSpecificBalances] Error:', error);
+            return {
+              success: false,
+              userMessage:
+                "Having trouble fetching balances. Want to try again?",
+              error: error instanceof Error ? error.message : "Unknown error"
+            };
+          }
+        }
+      }),
+      getSwapQuoteForEntireBalance: tool({
+        description:
+          "Get a swap quote for the user's ENTIRE balance of a token. Use this ONLY when user explicitly says 'swap my whole/all/entire balance'. This tool fetches the balance AND gets a quote in one step.",
+        inputSchema: z.object({
+          fromToken: z
+            .string()
+            .describe("The token to swap FROM (e.g., USDC, ARB)"),
+          toToken: z
+            .string()
+            .describe("The token to swap TO (e.g., ARB, USDC)"),
+          chainId: z
+            .number()
+            .describe("Chain ID - REQUIRED. 42161=Arbitrum, 56=BNB")
+        }),
+        execute: async ({ fromToken, toToken, chainId }) => {
+          console.log('[TOOL:getSwapQuoteForEntireBalance] Getting balance and quote:', {
+            fromToken,
+            toToken,
+            chainId,
+            walletAddress
+          });
+
+          if (!walletAddress) {
+            return {
+              success: false,
+              userMessage: "Please connect your wallet first.",
+              error: "Wallet address not provided"
+            };
+          }
+
+          try {
+            const chainName = getChainName(chainId);
+            const normalizedFrom = normalizeTokenSymbol(fromToken, chainId);
+            const normalizedTo = normalizeTokenSymbol(toToken, chainId);
+
+            // Step 1: Get the balance
+            const chain = chainId === 42161 ? arbitrum : bsc;
+            const publicClient = createPublicClient({
+              chain,
+              transport: http()
+            });
+
+            const { getTokenBySymbol } = await import("@/lib/tokens");
+            const fromTokenInfo = await getTokenBySymbol(normalizedFrom, chainId);
+
+            if (!fromTokenInfo) {
+              return {
+                success: false,
+                userMessage: `I couldn't find ${fromToken} on ${chainName}. Could you double-check the token symbol?`,
+                error: `Token not found: ${fromToken}`
+              };
+            }
+
+            const { getTokenBalance } = await import("@/lib/wallet-balances");
+            const { balance: balanceAmount } = await getTokenBalance(
+              publicClient,
+              fromTokenInfo.address as Address,
+              walletAddress as Address,
+              fromTokenInfo.decimals
+            );
+
+            console.log(`[TOOL:getSwapQuoteForEntireBalance] ${fromToken} balance: ${balanceAmount}`);
+
+            // Check if balance is zero
+            if (parseFloat(balanceAmount) === 0) {
+              return {
+                success: false,
+                userMessage: `You don't have any ${fromToken} to swap on ${chainName}.`,
+                error: "Zero balance"
+              };
+            }
+
+            // Step 2: Get token info for the toToken and validate
+            const toTokenInfo = await getTokenBySymbol(normalizedTo, chainId);
+            if (!toTokenInfo) {
+              return {
+                success: false,
+                userMessage: `I couldn't find ${toToken} on ${chainName}. Could you double-check the token symbol?`,
+                error: `Token not found: ${toToken}`
+              };
+            }
+
+            // Step 3: Check liquidity with CoW Protocol
+            try {
+              const { parseUnits } = await import("viem");
+              const sellAmount = parseUnits(balanceAmount, fromTokenInfo.decimals);
+
+              const quoteUrl = `https://api.cow.fi/${chainId === 42161 ? 'arbitrum_one' : chainId === 56 ? 'bsc' : 'mainnet'}/api/v1/quote`;
+
+              const quoteResponse = await fetch(quoteUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  sellToken: fromTokenInfo.address,
+                  buyToken: toTokenInfo.address,
+                  sellAmountBeforeFee: sellAmount.toString(),
+                  from: walletAddress,
+                  kind: 'sell',
+                  priceQuality: 'fast'
+                })
+              });
+
+              if (!quoteResponse.ok) {
+                const errorText = await quoteResponse.text();
+                console.log('[TOOL:getSwapQuoteForEntireBalance] Quote check failed:', quoteResponse.status, errorText);
+
+                if (errorText.toLowerCase().includes('liquidity') || quoteResponse.status === 404) {
+                  return {
+                    success: false,
+                    userMessage: `You have ${balanceAmount} ${normalizedFrom} ($${(parseFloat(balanceAmount) * 1).toFixed(2)}), but there isn't enough liquidity to swap it all for ${normalizedTo} on ${chainName}. Try swapping a smaller amount.`,
+                    error: 'Insufficient liquidity'
+                  };
+                }
+              }
+            } catch (liquidityCheckError) {
+              console.log('[TOOL:getSwapQuoteForEntireBalance] Liquidity check failed, continuing anyway:', liquidityCheckError);
+            }
+
+            // Step 4: Return data for client-side quote display
+            return {
+              success: true,
+              chain: chainName,
+              chainId,
+              fromToken: normalizedFrom,
+              toToken: normalizedTo,
+              amount: balanceAmount,
+              fromTokenAddress: fromTokenInfo.address,
+              fromTokenDecimals: fromTokenInfo.decimals,
+              toTokenAddress: toTokenInfo.address,
+              toTokenDecimals: toTokenInfo.decimals,
+              needsClientQuote: true,
+              message: `You have ${balanceAmount} ${normalizedFrom}. Getting quote to swap it all for ${normalizedTo}...`
+            };
+          } catch (error) {
+            console.error('[TOOL:getSwapQuoteForEntireBalance] Error:', error);
+            return {
+              success: false,
+              userMessage: "Something went wrong. Want to try again?",
+              error: error instanceof Error ? error.message : "Unknown error"
+            };
+          }
+        }
       })
     }
   });
 
-  return result.toUIMessageStreamResponse();
+  console.log('[API] Streaming response to client...');
+  const response = result.toUIMessageStreamResponse();
+  console.log('[API] Response created, returning to client');
+  return response;
 }

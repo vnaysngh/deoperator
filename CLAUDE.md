@@ -55,3 +55,75 @@ This project uses Next.js App Router with file-system based routing:
 - Flat config format (eslint.config.mjs)
 - Extends: `next/core-web-vitals` and `next/typescript`
 - Ignores: node_modules, .next, out, build, next-env.d.ts
+- Always use description variable names. Always test the files you touched for type errors.
+
+## AI Tool Development - CRITICAL RULES
+
+**⚠️ BEFORE CREATING OR MODIFYING ANY AI TOOL, READ THIS:**
+
+### The Problem
+OpenAI GPT-4 frequently stops after tool calls without generating text responses (`finishReason: 'tool-calls'`, `text: ''`). This causes blank UI and frustrated users.
+
+### The Solution
+**EVERY tool return statement MUST include a `message` or `userMessage` field.**
+
+### Required Convention
+
+```typescript
+// ✅ SUCCESS - Must have 'message'
+return {
+  success: true,
+  message: "User-friendly description of what happened",
+  // ... other data
+};
+
+// ✅ ERROR - Must have 'userMessage'
+return {
+  success: false,
+  userMessage: "User-friendly error with actionable guidance",
+  error: "Technical error for logs"
+};
+```
+
+### Pre-Commit Checklist
+
+Before committing changes to `src/app/api/chat/route.ts`:
+
+1. **Run the checker:**
+   ```bash
+   ./scripts/check-tool-messages.sh
+   ```
+
+2. **Manual verification:**
+   - [ ] Every `return {` in tool execute has `message` or `userMessage`
+   - [ ] Messages are user-friendly (not technical jargon)
+   - [ ] Error messages are actionable (tell user what to do)
+
+3. **Test without AI response:**
+   - [ ] Make a request that triggers your tool
+   - [ ] Check logs for: `[AI] ⚠️ WARNING: AI stopped after tool calls`
+   - [ ] Verify UI shows your message (not blank screen)
+
+### Why This Matters
+
+**Without message field:**
+- Tool executes ✅
+- AI receives result ✅
+- AI stops without text ❌
+- Client renders nothing ❌
+- **User sees blank screen** ❌
+
+**With message field:**
+- Tool executes ✅
+- AI receives result ✅
+- AI stops without text (doesn't matter) ✅
+- Client renders tool message ✅
+- **User sees feedback** ✅
+
+### More Information
+
+- Read `TOOL_CONVENTION.md` for detailed examples
+- Read `TESTING_CHECKLIST.md` for test cases
+- See `src/components/Chat.tsx` lines 237-289 for client-side fallback handler
+
+**This is not optional. This prevents 30-minute debugging sessions.**
