@@ -1,6 +1,7 @@
 'use client'
 
 import { ConnectButton } from '@rainbow-me/rainbowkit'
+import Image from 'next/image'
 
 export function WalletConnect() {
   return (
@@ -79,10 +80,11 @@ export function WalletConnect() {
                         }}
                       >
                         {chain.iconUrl && (
-                          <img
+                          <Image
                             alt={chain.name ?? 'Chain icon'}
                             src={chain.iconUrl}
-                            style={{ width: 16, height: 16 }}
+                            width={16}
+                            height={16}
                           />
                         )}
                       </div>

@@ -1,7 +1,7 @@
 "use client";
 
 import { useChat } from "@ai-sdk/react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import { DefaultChatTransport } from "ai";
 import {
   useAccount,
@@ -14,7 +14,7 @@ import {
   getCowProtocolAllowance,
   approveCowProtocol
 } from "@/lib/cowswap-client";
-import type { Address } from "viem";
+import type { Address, PublicClient, WalletClient } from "viem";
 import { formatUnits, parseUnits } from "viem";
 
 interface ChatProps {
@@ -37,16 +37,21 @@ export function Chat({ walletAddress }: ChatProps) {
   const publicClient = usePublicClient();
   const { data: walletClient } = useWalletClient();
 
-  const scrollToBottom = () => {
+  // Use useCallback for stable function reference
+  const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  };
+  }, []);
 
   useEffect(() => {
     scrollToBottom();
+  }, [messages, scrollToBottom]);
+
+  // Separate effect for input focus to avoid unnecessary runs
+  useEffect(() => {
     if (inputRef.current && walletAddress && status !== "streaming") {
       inputRef.current.focus();
     }
-  }, [messages, walletAddress, status]);
+  }, [walletAddress, status]);
 
   return (
     <div className="bg-black rounded-2xl overflow-hidden shadow-2xl flex flex-col max-h-[80vh]">
@@ -113,8 +118,7 @@ export function Chat({ walletAddress }: ChatProps) {
                         part.state === "output-available" &&
                         "output" in part
                       ) {
-                        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                        const output = part.output as any;
+                        const output = part.output as Record<string, unknown>;
 
                         // Check if this needs client-side quote fetching
                         if (output?.needsClientQuote) {
@@ -248,6 +252,24 @@ export function Chat({ walletAddress }: ChatProps) {
   );
 }
 
+interface TokenInfo {
+  fromToken: string;
+  toToken: string;
+  amount: number;
+  fromTokenAddress: Address;
+  toTokenAddress: Address;
+  fromTokenDecimals: number;
+  toTokenDecimals: number;
+  chainId: number;
+  chain?: string;
+}
+
+interface QuoteData {
+  buyAmount: string;
+  feeAmount: string;
+  postSwapOrderFromQuote: () => Promise<string>;
+}
+
 /**
  * Component that fetches and displays quote using client-side Trading SDK
  */
@@ -257,16 +279,12 @@ function QuoteDisplay({
   walletClient,
   address
 }: {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  tokenInfo: any;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  publicClient: any;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  walletClient: any;
+  tokenInfo: TokenInfo;
+  publicClient: PublicClient | undefined;
+  walletClient: WalletClient | undefined;
   address?: Address;
 }) {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const [quote, setQuote] = useState<any>(null);
+  const [quote, setQuote] = useState<QuoteData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -406,6 +424,10 @@ function QuoteDisplay({
   );
 }
 
+interface OrderTokenInfo extends TokenInfo {
+  sellAmount: string;
+}
+
 /**
  * Component that submits order using client-side Trading SDK
  */
@@ -415,12 +437,9 @@ function OrderSubmit({
   walletClient,
   address
 }: {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  tokenInfo: any;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  publicClient: any;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  walletClient: any;
+  tokenInfo: OrderTokenInfo;
+  publicClient: PublicClient | undefined;
+  walletClient: WalletClient | undefined;
   address?: Address;
 }) {
   const [status, setStatus] = useState<"submitting" | "success" | "error">(
@@ -517,8 +536,7 @@ function CreateOrderButton({
   tokenInfo,
   postSwapOrderFromQuote
 }: {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  tokenInfo: any;
+  tokenInfo: TokenInfo;
   postSwapOrderFromQuote: () => Promise<string>;
 }) {
   const [orderStatus, setOrderStatus] = useState<
