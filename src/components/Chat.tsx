@@ -289,8 +289,9 @@ function QuoteDisplay({
           sellTokenDecimals: tokenInfo.fromTokenDecimals,
           buyToken: tokenInfo.toTokenAddress as Address,
           buyTokenDecimals: tokenInfo.toTokenDecimals,
-          amount: (
-            BigInt(tokenInfo.amount) * BigInt(10 ** tokenInfo.fromTokenDecimals)
+          amount: parseUnits(
+            tokenInfo.amount.toString(),
+            tokenInfo.fromTokenDecimals
           ).toString(),
           userAddress: address,
           chainId: tokenInfo.chainId
