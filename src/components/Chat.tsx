@@ -17,6 +17,14 @@ import {
 import type { Address } from "viem";
 import { formatUnits, parseUnits } from "viem";
 
+// Global ref to track the latest quote timestamp and listeners
+let latestQuoteTimestamp = 0;
+const quoteListeners = new Set<() => void>();
+
+function notifyQuoteChange() {
+  quoteListeners.forEach(listener => listener());
+}
+
 export function Chat() {
   const [input, setInput] = useState("");
   const { address } = useAccount();
@@ -32,7 +40,10 @@ export function Chat() {
       api: "/api/chat",
       fetch: async (input: RequestInfo | URL, init?: RequestInit) => {
         const currentAddress = addressRef.current || "";
-        console.log('[CLIENT] Sending request with wallet address:', currentAddress);
+        console.log(
+          "[CLIENT] Sending request with wallet address:",
+          currentAddress
+        );
         return fetch(input, {
           ...init,
           headers: {
@@ -126,6 +137,19 @@ export function Chat() {
                         // eslint-disable-next-line @typescript-eslint/no-explicit-any
                         const output = part.output as any;
 
+                        // Check if this needs client-side balance fetch + quote
+                        if (output?.needsClientBalanceFetch) {
+                          return (
+                            <EntireBalanceQuoteDisplay
+                              key={index}
+                              tokenInfo={output}
+                              publicClient={publicClient}
+                              walletClient={walletClient}
+                              address={address}
+                            />
+                          );
+                        }
+
                         // Check if this needs client-side quote fetching
                         if (output?.needsClientQuote) {
                           return (
@@ -154,7 +178,9 @@ export function Chat() {
 
                         // Wallet balances display
                         const isBalances =
-                          output?.success && output?.balances && Array.isArray(output.balances);
+                          output?.success &&
+                          output?.balances &&
+                          Array.isArray(output.balances);
                         if (isBalances) {
                           return (
                             <div
@@ -170,39 +196,43 @@ export function Chat() {
                                     </span>
                                   </div>
                                   <div className="text-xs text-gray-400">
-                                    Total: ${output.totalValue?.toFixed(2) || '0.00'}
+                                    Total: $
+                                    {output.totalValue?.toFixed(2) || "0.00"}
                                   </div>
                                 </div>
                                 <div className="space-y-2">
-                                  {output.balances.map((bal: any, i: number) => (
-                                    <div
-                                      key={i}
-                                      className="flex items-center justify-between p-2 rounded-lg bg-white/5 hover:bg-white/10 transition-colors"
-                                    >
-                                      <div className="flex-1">
-                                        <div className="text-sm font-semibold text-white">
-                                          {bal.symbol}
-                                        </div>
-                                        <div className="text-xs text-gray-400">
-                                          {bal.name}
-                                        </div>
-                                      </div>
-                                      <div className="text-right">
-                                        <div className="text-sm font-semibold text-white">
-                                          {parseFloat(bal.balance).toFixed(6)}
-                                        </div>
-                                        {bal.usdValue !== undefined && (
-                                          <div className="text-xs text-gray-400">
-                                            ${bal.usdValue.toFixed(2)}
+                                  {output.balances.map(
+                                    (bal: any, i: number) => (
+                                      <div
+                                        key={i}
+                                        className="flex items-center justify-between p-2 rounded-lg bg-white/5 hover:bg-white/10 transition-colors"
+                                      >
+                                        <div className="flex-1">
+                                          <div className="text-sm font-semibold text-white">
+                                            {bal.symbol}
                                           </div>
-                                        )}
+                                          <div className="text-xs text-gray-400">
+                                            {bal.name}
+                                          </div>
+                                        </div>
+                                        <div className="text-right">
+                                          <div className="text-sm font-semibold text-white">
+                                            {parseFloat(bal.balance).toFixed(6)}
+                                          </div>
+                                          {bal.usdValue !== undefined && (
+                                            <div className="text-xs text-gray-400">
+                                              ${bal.usdValue.toFixed(2)}
+                                            </div>
+                                          )}
+                                        </div>
                                       </div>
-                                    </div>
-                                  ))}
+                                    )
+                                  )}
                                 </div>
                                 {output.count > output.balances.length && (
                                   <div className="mt-3 pt-3 border-t border-white/10 text-xs text-gray-400 text-center">
-                                    Showing top {output.balances.length} of {output.count} tokens
+                                    Showing top {output.balances.length} of{" "}
+                                    {output.count} tokens
                                   </div>
                                 )}
                               </div>
@@ -242,7 +272,10 @@ export function Chat() {
                         // MUST be rendered client-side as a fallback.
 
                         // 1. Error handling (highest priority)
-                        if (output?.success === false && "userMessage" in output) {
+                        if (
+                          output?.success === false &&
+                          "userMessage" in output
+                        ) {
                           return (
                             <div
                               key={index}
@@ -265,7 +298,11 @@ export function Chat() {
 
                         // 2. Success messages with 'message' field
                         // This catches: singleTokenResponse, price responses, and any future tools
-                        if (output?.success === true && output?.message && typeof output.message === 'string') {
+                        if (
+                          output?.success === true &&
+                          output?.message &&
+                          typeof output.message === "string"
+                        ) {
                           return (
                             <div
                               key={index}
@@ -361,6 +398,89 @@ export function Chat() {
 }
 
 /**
+ * Component that fetches user's entire balance and then displays quote
+ * Used for "swap my whole balance" requests
+ */
+function EntireBalanceQuoteDisplay({
+  tokenInfo,
+  publicClient,
+  walletClient,
+  address
+}: {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  tokenInfo: any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  publicClient: any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  walletClient: any;
+  address?: Address;
+}) {
+  // Fetch balance using wagmi
+  const { data: balance, isLoading: balanceLoading } = useBalance({
+    address: address,
+    token: tokenInfo.fromTokenAddress as Address,
+    chainId: tokenInfo.chainId
+  });
+
+  if (balanceLoading) {
+    return (
+      <div className="mt-3 pt-3 border-t border-white/10">
+        <div className="text-xs flex items-center gap-2 text-primary-300">
+          <div className="w-3 h-3 border-2 border-primary-400 border-t-transparent rounded-full animate-spin"></div>
+          <span>Checking {tokenInfo.fromToken} balance...</span>
+        </div>
+      </div>
+    );
+  }
+
+  // Check if balance is zero or undefined
+  if (!balance || balance.value === BigInt(0)) {
+    return (
+      <div className="mt-3 pt-3 border-t border-white/10">
+        <div className="glass-strong rounded-lg p-4">
+          <div className="flex items-center gap-2 mb-2">
+            <div className="w-2 h-2 rounded-full bg-amber-500"></div>
+            <span className="text-xs font-semibold text-amber-400">
+              Notice
+            </span>
+          </div>
+          <div className="text-white text-sm">
+            You don&apos;t have any {tokenInfo.fromToken} to swap on {tokenInfo.chain}.
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Convert balance to human-readable format
+  const balanceAmount = formatUnits(balance.value, balance.decimals);
+
+  // Create updated tokenInfo with the actual balance
+  const updatedTokenInfo = {
+    ...tokenInfo,
+    amount: balanceAmount,
+    needsClientBalanceFetch: false // Already fetched
+  };
+
+  // Now render the normal QuoteDisplay with the balance
+  return (
+    <>
+      <div className="mt-3 pt-3 border-t border-white/10">
+        <div className="text-sm text-gray-300">
+          Your {tokenInfo.fromToken} balance: {parseFloat(balanceAmount).toFixed(6)} {tokenInfo.fromToken}
+        </div>
+      </div>
+      <QuoteDisplay
+        tokenInfo={updatedTokenInfo}
+        publicClient={publicClient}
+        walletClient={walletClient}
+        address={address}
+      />
+    </>
+  );
+}
+
+/**
  * Component that fetches and displays quote using client-side Trading SDK
  */
 function QuoteDisplay({
@@ -381,123 +501,221 @@ function QuoteDisplay({
   const [quote, setQuote] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [countdown, setCountdown] = useState(30);
+  const [orderInProgress, setOrderInProgress] = useState(false);
+  const [orderCompleted, setOrderCompleted] = useState(false);
+
+  // Generate unique timestamp for this quote instance
+  const [quoteTimestamp] = useState(() => Date.now());
+
+  // Force re-render when global latestQuoteTimestamp changes
+  const [, forceUpdate] = useState({});
 
   useEffect(() => {
-    async function fetchQuote() {
-      if (!publicClient || !walletClient || !address) {
-        setError("Please connect your wallet");
+    const listener = () => forceUpdate({});
+    quoteListeners.add(listener);
+    return () => {
+      quoteListeners.delete(listener);
+    };
+  }, []);
+
+  // Function to fetch quote
+  const fetchQuote = async () => {
+    setLoading(true);
+    setError(null);
+
+    if (!publicClient || !walletClient || !address) {
+      setError("Please connect your wallet");
+      setLoading(false);
+      return;
+    }
+
+    try {
+      console.log("[CLIENT] Fetching quote with Trading SDK...");
+
+      // Import and use the client SDK
+      const { getSwapQuote } = await import("@/lib/cowswap-client");
+
+      const quoteResponse = await getSwapQuote(publicClient, walletClient, {
+        sellToken: tokenInfo.fromTokenAddress as Address,
+        sellTokenDecimals: tokenInfo.fromTokenDecimals,
+        buyToken: tokenInfo.toTokenAddress as Address,
+        buyTokenDecimals: tokenInfo.toTokenDecimals,
+        amount: parseUnits(
+          tokenInfo.amount.toString(),
+          tokenInfo.fromTokenDecimals
+        ).toString(),
+        userAddress: address,
+        chainId: tokenInfo.chainId
+      });
+
+      console.log("[CLIENT] Quote response:", quoteResponse);
+
+      // Check if quote failed or has no results
+      if (!quoteResponse || !quoteResponse.quoteResults) {
+        console.error("[CLIENT] No quoteResults in response");
+        setError(
+          "Unable to get a quote for this trade. This may be due to insufficient liquidity or the trade amount being too small. Try adjusting the amount or choosing different tokens."
+        );
         setLoading(false);
         return;
       }
 
-      try {
-        console.log("[CLIENT] Fetching quote with Trading SDK...");
+      console.log("[CLIENT] quoteResults:", quoteResponse.quoteResults);
 
-        // Import and use the client SDK
-        const { getSwapQuote } = await import("@/lib/cowswap-client");
+      const { amountsAndCosts } = quoteResponse.quoteResults;
 
-        const quoteResponse = await getSwapQuote(publicClient, walletClient, {
-          sellToken: tokenInfo.fromTokenAddress as Address,
-          sellTokenDecimals: tokenInfo.fromTokenDecimals,
-          buyToken: tokenInfo.toTokenAddress as Address,
-          buyTokenDecimals: tokenInfo.toTokenDecimals,
-          amount: parseUnits(
-            tokenInfo.amount.toString(),
-            tokenInfo.fromTokenDecimals
-          ).toString(),
-          userAddress: address,
-          chainId: tokenInfo.chainId
-        });
+      console.log("[CLIENT] amountsAndCosts:", amountsAndCosts);
 
-        console.log("[CLIENT] Quote response:", quoteResponse);
-
-        // Check if quote failed or has no results
-        if (!quoteResponse || !quoteResponse.quoteResults) {
-          console.error("[CLIENT] No quoteResults in response");
-          setError("Unable to get a quote for this trade. This may be due to insufficient liquidity or the trade amount being too small. Try adjusting the amount or choosing different tokens.");
-          setLoading(false);
-          return;
-        }
-
-        console.log("[CLIENT] quoteResults:", quoteResponse.quoteResults);
-
-        const { amountsAndCosts } = quoteResponse.quoteResults;
-
-        console.log("[CLIENT] amountsAndCosts:", amountsAndCosts);
-
-        // Validate the response structure
-        if (!amountsAndCosts ||
-            !amountsAndCosts.afterSlippage ||
-            !amountsAndCosts.afterSlippage.buyAmount ||
-            !amountsAndCosts.costs ||
-            !amountsAndCosts.costs.networkFee) {
-          console.error("[CLIENT] Invalid quote response structure:", amountsAndCosts);
-          setError("Unable to get a quote for this trade. There may be insufficient liquidity for this token pair. Try using a smaller amount or different tokens.");
-          setLoading(false);
-          return;
-        }
-
-        // Use beforeNetworkCosts for the quote (matches CoW Swap UI)
-        // afterSlippage is what you'll actually receive (after fees)
-        const buyAmountBeforeFees = amountsAndCosts.beforeNetworkCosts.buyAmount;
-        const buyAmountAfterFees = amountsAndCosts.afterSlippage.buyAmount;
-        const networkFeeInSellToken = amountsAndCosts.costs.networkFee.amountInSellCurrency;
-
-        console.log("[CLIENT] Quote values:", {
-          buyAmountBeforeFees: buyAmountBeforeFees.toString(),
-          buyAmountAfterFees: buyAmountAfterFees.toString(),
-          networkFeeInSellToken: networkFeeInSellToken.toString()
-        });
-
-        setQuote({
-          buyAmount: (
-            Number(buyAmountBeforeFees) / Math.pow(10, tokenInfo.toTokenDecimals)
-          ).toFixed(6),
-          buyAmountAfterFees: (
-            Number(buyAmountAfterFees) / Math.pow(10, tokenInfo.toTokenDecimals)
-          ).toFixed(6),
-          feeAmount: (
-            Number(networkFeeInSellToken) / Math.pow(10, tokenInfo.fromTokenDecimals)
-          ).toFixed(6),
-          postSwapOrderFromQuote: quoteResponse.postSwapOrderFromQuote
-        });
+      // Validate the response structure
+      if (
+        !amountsAndCosts ||
+        !amountsAndCosts.afterSlippage ||
+        !amountsAndCosts.afterSlippage.buyAmount ||
+        !amountsAndCosts.costs ||
+        !amountsAndCosts.costs.networkFee
+      ) {
+        console.error(
+          "[CLIENT] Invalid quote response structure:",
+          amountsAndCosts
+        );
+        setError(
+          "Unable to get a quote for this trade. There may be insufficient liquidity for this token pair. Try using a smaller amount or different tokens."
+        );
         setLoading(false);
-      } catch (err) {
-        console.error("[CLIENT] Quote fetch error:", err);
-
-        // Check for specific error messages
-        const errorMessage = err instanceof Error ? err.message : String(err);
-
-        if (errorMessage.toLowerCase().includes("liquidity")) {
-          setError("Insufficient liquidity for this trade. Try using a smaller amount or different tokens.");
-        } else if (errorMessage.toLowerCase().includes("slippage")) {
-          setError("Price slippage too high for this trade. Try adjusting the amount or try again later.");
-        } else {
-          setError("Unable to get a quote for this trade. Please try again or use different tokens.");
-        }
-
-        setLoading(false);
+        return;
       }
-    }
 
+      // Use beforeNetworkCosts for the quote (matches CoW Swap UI)
+      // afterSlippage is what you'll actually receive (after fees)
+      const buyAmountBeforeFees = amountsAndCosts.beforeNetworkCosts.buyAmount;
+      const buyAmountAfterFees = amountsAndCosts.afterSlippage.buyAmount;
+      const networkFeeInSellToken =
+        amountsAndCosts.costs.networkFee.amountInSellCurrency;
+
+      console.log("[CLIENT] Quote values:", {
+        buyAmountBeforeFees: buyAmountBeforeFees.toString(),
+        buyAmountAfterFees: buyAmountAfterFees.toString(),
+        networkFeeInSellToken: networkFeeInSellToken.toString()
+      });
+
+      setQuote({
+        buyAmount: (
+          Number(buyAmountBeforeFees) / Math.pow(10, tokenInfo.toTokenDecimals)
+        ).toFixed(6),
+        buyAmountAfterFees: (
+          Number(buyAmountAfterFees) / Math.pow(10, tokenInfo.toTokenDecimals)
+        ).toFixed(6),
+        feeAmount: (
+          Number(networkFeeInSellToken) /
+          Math.pow(10, tokenInfo.fromTokenDecimals)
+        ).toFixed(6),
+        postSwapOrderFromQuote: quoteResponse.postSwapOrderFromQuote
+      });
+      setLoading(false);
+      setCountdown(30); // Reset countdown after successful fetch
+
+      // Mark this as the latest quote ONLY after successful fetch
+      // AND only if no newer quote has taken over while we were fetching
+      if (quoteTimestamp >= latestQuoteTimestamp) {
+        latestQuoteTimestamp = quoteTimestamp;
+        notifyQuoteChange(); // Notify all quote components to re-render
+      }
+    } catch (err) {
+      console.error("[CLIENT] Quote fetch error:", err);
+
+      // Check for specific error messages
+      const errorMessage = err instanceof Error ? err.message : String(err);
+
+      if (errorMessage.toLowerCase().includes("liquidity")) {
+        setError(
+          "Insufficient liquidity for this trade. Try using a smaller amount or different tokens."
+        );
+      } else if (errorMessage.toLowerCase().includes("slippage")) {
+        setError(
+          "Price slippage too high for this trade. Try adjusting the amount or try again later."
+        );
+      } else {
+        setError(
+          "Unable to get a quote for this trade. Please try again or use different tokens."
+        );
+      }
+
+      setLoading(false);
+    }
+  };
+
+  // Initial fetch on mount
+  useEffect(() => {
+    // Mark this quote as the latest ONLY after we successfully load
+    // This prevents new loading quotes from expiring old ones immediately
     fetchQuote();
-  }, [tokenInfo, publicClient, walletClient, address]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Countdown timer with auto-refresh
+  useEffect(() => {
+    // Only run timer if:
+    // 1. Not loading, no error, and quote exists
+    // 2. This is the latest quote (not an older quote)
+    // 3. No order transaction in progress
+    // 4. Order has not been completed
+    const isLatest = quoteTimestamp === latestQuoteTimestamp;
+    if (loading || error || !quote || !isLatest || orderInProgress || orderCompleted) return;
+
+    const timer = setInterval(() => {
+      setCountdown((prev) => {
+        if (prev <= 1) {
+          // Double-check we're still the latest before refreshing
+          if (quoteTimestamp === latestQuoteTimestamp) {
+            fetchQuote();
+          }
+          return 30;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => clearInterval(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, error, quote, orderInProgress, orderCompleted, quoteTimestamp]);
 
   if (loading) {
     return (
       <div className="mt-3 pt-3 border-t border-white/10">
         <div className="text-xs flex items-center gap-2 text-primary-300">
           <div className="w-3 h-3 border-2 border-primary-400 border-t-transparent rounded-full animate-spin"></div>
-          <span>Fetching quote from Trading SDK...</span>
+          <span>Fetching quote...</span>
         </div>
       </div>
     );
   }
 
-  // Don't render error UI - let the AI assistant handle the error message conversationally
+  // Show error message to user if quote fetch failed
   if (error) {
-    return null;
+    return (
+      <div className="mt-3 pt-3 border-t border-white/10">
+        <div className="glass-strong rounded-lg p-4">
+          <div className="flex items-center gap-2 mb-2">
+            <div className="w-2 h-2 rounded-full bg-red-500"></div>
+            <span className="text-xs font-semibold text-red-400">
+              Quote Error
+            </span>
+          </div>
+          <div className="text-white text-sm mb-3">{error}</div>
+          <button
+            onClick={fetchQuote}
+            className="w-full px-4 py-2 rounded-lg font-semibold text-sm bg-primary-600 hover:bg-primary-500 text-white transition-all"
+          >
+            Try Again
+          </button>
+        </div>
+      </div>
+    );
   }
+
+  // Check if this is the latest quote
+  const isLatestQuote = quoteTimestamp === latestQuoteTimestamp;
 
   return (
     <div className="mt-3 pt-3 border-t border-white/10">
@@ -509,11 +727,29 @@ function QuoteDisplay({
               CoW Protocol Quote
             </span>
           </div>
-          {tokenInfo.chain && (
-            <span className="text-xs px-2 py-1 glass rounded-md text-gray-400">
-              {tokenInfo.chain}
-            </span>
-          )}
+          <div className="flex items-center gap-2">
+            {tokenInfo.chain && (
+              <span className="text-xs px-2 py-1 glass rounded-md text-gray-400">
+                {tokenInfo.chain}
+              </span>
+            )}
+            {isLatestQuote && (
+              <span
+                className="text-xs px-2 py-1 glass rounded-md text-gray-400 cursor-help relative group"
+              >
+                {countdown}s
+                <span className="invisible group-hover:visible absolute left-1/2 -translate-x-1/2 bottom-full mb-2 px-2 py-1 text-xs text-white bg-gray-900 rounded-md whitespace-nowrap z-10 pointer-events-none">
+                  Quote refreshes in {countdown} seconds
+                  <span className="absolute left-1/2 -translate-x-1/2 top-full w-0 h-0 border-4 border-transparent border-t-gray-900"></span>
+                </span>
+              </span>
+            )}
+            {!isLatestQuote && (
+              <span className="text-xs px-2 py-1 bg-amber-500/20 rounded-md text-amber-400">
+                Expired
+              </span>
+            )}
+          </div>
         </div>
         <div className="grid grid-cols-2 gap-3 text-sm">
           <div>
@@ -554,6 +790,9 @@ function QuoteDisplay({
           <CreateOrderButton
             tokenInfo={tokenInfo}
             postSwapOrderFromQuote={quote.postSwapOrderFromQuote}
+            onOrderStatusChange={setOrderInProgress}
+            onOrderCompleted={() => setOrderCompleted(true)}
+            isLatestQuote={isLatestQuote}
           />
         </div>
       </div>
@@ -670,11 +909,17 @@ function OrderSubmit({
  */
 function CreateOrderButton({
   tokenInfo,
-  postSwapOrderFromQuote
+  postSwapOrderFromQuote,
+  onOrderStatusChange,
+  onOrderCompleted,
+  isLatestQuote = true
 }: {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   tokenInfo: any;
   postSwapOrderFromQuote: () => Promise<string>;
+  onOrderStatusChange?: (inProgress: boolean) => void;
+  onOrderCompleted?: () => void;
+  isLatestQuote?: boolean;
 }) {
   const [orderStatus, setOrderStatus] = useState<
     | "idle"
@@ -754,6 +999,9 @@ function CreateOrderButton({
     }
 
     try {
+      // Notify parent that order is in progress
+      onOrderStatusChange?.(true);
+
       // Step 1: Check and handle approval if needed
       if (!isApproved) {
         setOrderStatus("checking-approval");
@@ -801,12 +1049,19 @@ function CreateOrderButton({
 
       setOrderId(extractedOrderId);
       setOrderStatus("success");
+
+      // Notify parent that order is complete and successful
+      onOrderStatusChange?.(false);
+      onOrderCompleted?.(); // Stop timer permanently
     } catch (err) {
       console.error("[CLIENT] Order submission error:", err);
       setErrorMessage(
         err instanceof Error ? err.message : "Failed to submit order"
       );
       setOrderStatus("error");
+
+      // Notify parent that order is complete (but with error, so timer can resume)
+      onOrderStatusChange?.(false);
     }
   };
 
@@ -873,6 +1128,7 @@ function CreateOrderButton({
       <button
         onClick={handleClick}
         disabled={
+          !isLatestQuote ||
           !address ||
           orderStatus !== "idle" ||
           !hasEnoughBalance ||
@@ -880,18 +1136,22 @@ function CreateOrderButton({
           isCheckingApproval
         }
         className={`w-full px-4 py-3 rounded-lg font-semibold text-sm transition-all ${
-          !address ||
-          !hasEnoughBalance ||
-          balanceLoading ||
-          isCheckingApproval ||
-          orderStatus === "error"
+          !isLatestQuote
+            ? "bg-gray-700 text-gray-400 cursor-not-allowed"
+            : !address ||
+              !hasEnoughBalance ||
+              balanceLoading ||
+              isCheckingApproval ||
+              orderStatus === "error"
             ? "bg-gray-700 text-gray-400 cursor-not-allowed"
             : orderStatus !== "idle"
             ? "bg-emerald-600 text-white cursor-wait"
             : "bg-emerald-600 hover:bg-emerald-500 text-white"
         }`}
       >
-        {balanceLoading ? (
+        {!isLatestQuote ? (
+          "Expired"
+        ) : balanceLoading ? (
           <span className="flex items-center justify-center gap-2">
             <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
             Checking balance...
