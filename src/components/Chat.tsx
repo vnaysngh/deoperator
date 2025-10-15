@@ -53,6 +53,22 @@ export function Chat({ walletAddress }: ChatProps) {
     }
   }, [walletAddress, status]);
 
+  // Memoize form submission handler for stable reference
+  const handleSubmit = useCallback((e: React.FormEvent) => {
+    e.preventDefault();
+    if (input.trim() && walletAddress) {
+      sendMessage({
+        text: input
+      });
+      setInput("");
+    }
+  }, [input, walletAddress, sendMessage]);
+
+  // Memoize input change handler for stable reference
+  const handleInputChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    setInput(e.target.value);
+  }, []);
+
   return (
     <div className="bg-black rounded-2xl overflow-hidden shadow-2xl flex flex-col max-h-[80vh]">
       {/* Messages */}
@@ -222,22 +238,14 @@ export function Chat({ walletAddress }: ChatProps) {
 
       {/* Input */}
       <form
-        onSubmit={(e) => {
-          e.preventDefault();
-          if (input.trim() && walletAddress) {
-            sendMessage({
-              text: input
-            });
-            setInput("");
-          }
-        }}
+        onSubmit={handleSubmit}
         className="p-4 flex-shrink-0"
       >
         <div className="flex items-center">
           <input
             ref={inputRef}
             value={input}
-            onChange={(e) => setInput(e.target.value)}
+            onChange={handleInputChange}
             placeholder={
               walletAddress
                 ? "Ask me to swap tokens..."
@@ -609,7 +617,8 @@ function CreateOrderButton({
     requiredAmount
   ]);
 
-  const handleClick = async () => {
+  // Memoize handleClick to prevent unnecessary re-creations
+  const handleClick = useCallback(async () => {
     if (!publicClient || !walletClient || !address) {
       setErrorMessage("Please connect your wallet");
       setOrderStatus("error");
@@ -671,7 +680,7 @@ function CreateOrderButton({
       );
       setOrderStatus("error");
     }
-  };
+  }, [publicClient, walletClient, address, isApproved, tokenInfo, requiredAmount, postSwapOrderFromQuote]);
 
   if (orderStatus === "success") {
     return (
