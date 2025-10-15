@@ -107,8 +107,20 @@ async function fetchTokenBalancesFromIndexer(
 
     // Map Moralis response to our format
     // Filter out native tokens (ETH/BNB) and tokens with USD value below $0.01
+    interface MoralisToken {
+      native_token?: boolean;
+      usd_value?: string;
+      token_address: string;
+      balance?: string;
+      balance_formatted?: string;
+      decimals: string | number;
+      symbol?: string;
+      name?: string;
+      usd_price?: string;
+    }
+
     const tokens = result
-      .filter((token: any) => {
+      .filter((token: MoralisToken) => {
         // Exclude native tokens (ETH/BNB)
         if (token.native_token) return false
 
@@ -116,8 +128,8 @@ async function fetchTokenBalancesFromIndexer(
         const usdValue = parseFloat(token.usd_value || '0')
         return usdValue >= 0.01
       })
-      .map((token: any) => {
-        const decimals = parseInt(token.decimals) || 18
+      .map((token: MoralisToken) => {
+        const decimals = typeof token.decimals === 'number' ? token.decimals : parseInt(token.decimals) || 18
 
         // Use balance_formatted if available, otherwise calculate from balance
         let balanceFormatted: string
@@ -139,7 +151,7 @@ async function fetchTokenBalancesFromIndexer(
           usdValue: parseFloat(token.usd_value || '0')
         }
       })
-      .sort((a: { usdValue: number }, b: { usdValue: number }) => b.usdValue - a.usdValue) // Sort by USD value (highest first)
+      .sort((a: { usdValue: number }, b: { usdValue: number }) => (b.usdValue || 0) - (a.usdValue || 0)) // Sort by USD value (highest first)
 
     return tokens
   } catch (error) {
@@ -284,7 +296,7 @@ export async function getSpecificTokenBalances(
               tokenBalance.usdPrice = usdPrice
               tokenBalance.usdValue = parseFloat(balance) * usdPrice
             }
-          } catch (error) {
+          } catch {
             // Price fetch failed, continue without USD value
           }
         }

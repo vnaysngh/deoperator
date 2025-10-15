@@ -1,29 +1,6 @@
 import { getDefaultConfig } from "@rainbow-me/rainbowkit";
 import { arbitrum, bsc } from "wagmi/chains";
-import { defineChain } from "viem";
 import { http } from "wagmi";
-
-// Define Unichain mainnet
-const unichain = defineChain({
-  id: 130,
-  name: "Unichain",
-  nativeCurrency: {
-    decimals: 18,
-    name: "Ether",
-    symbol: "ETH"
-  },
-  rpcUrls: {
-    default: {
-      http: ["https://rpc.unichain.org"]
-    }
-  },
-  blockExplorers: {
-    default: {
-      name: "Uniscan",
-      url: "https://uniscan.xyz"
-    }
-  }
-});
 
 const projectId = process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID || "";
 

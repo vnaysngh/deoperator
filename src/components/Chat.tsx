@@ -202,7 +202,7 @@ export function Chat() {
                                 </div>
                                 <div className="space-y-2">
                                   {output.balances.map(
-                                    (bal: any, i: number) => (
+                                    (bal: { symbol: string; name: string; balance: string; usdValue?: number }, i: number) => (
                                       <div
                                         key={i}
                                         className="flex items-center justify-between p-2 rounded-lg bg-white/5 hover:bg-white/10 transition-colors"

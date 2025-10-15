@@ -2,83 +2,11 @@
 
 import { Chat } from "@/components/Chat";
 import { WalletConnect } from "@/components/WalletConnect";
-import { useAccount, useWalletClient } from "wagmi";
-import { providers } from "ethers";
-import { executeSwapClient } from "@/lib/swapClient";
 import { useState } from "react";
 
 export default function Home() {
-  const { address } = useAccount();
-  const { data: walletClient } = useWalletClient();
-  const [isExecuting, setIsExecuting] = useState(false);
-  const [status, setStatus] = useState("");
-
-  const handleExecuteSwap = async (transactionData: {
-    fromToken: string;
-    toToken: string;
-    amount: string;
-    slippage: string;
-  }) => {
-    if (!walletClient || !address) {
-      setStatus("Please connect your wallet first");
-      return;
-    }
-
-    try {
-      setIsExecuting(true);
-      setStatus("Getting swap quote...");
-
-      const quoteResponse = await fetch("/api/swap", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          fromToken: transactionData.fromToken,
-          toToken: transactionData.toToken,
-          amount: transactionData.amount,
-          slippage: transactionData.slippage
-        })
-      });
-
-      const quoteData = await quoteResponse.json();
-
-      if (!quoteData.success) {
-        throw new Error(quoteData.error || "Failed to get quote");
-      }
-
-      setStatus("Preparing transaction...");
-
-      const provider = new providers.Web3Provider(
-        walletClient as unknown as providers.ExternalProvider
-      );
-      const signer = provider.getSigner();
-
-      setStatus(
-        `Executing swap: ${transactionData.amount} ${transactionData.fromToken} → ${transactionData.toToken}`
-      );
-
-      const receipt = await executeSwapClient(
-        transactionData.fromToken,
-        transactionData.toToken,
-        transactionData.amount,
-        quoteData.quote.outputAmount,
-        address,
-        signer,
-        parseFloat(transactionData.slippage)
-      );
-
-      setStatus(`Swap successful! Transaction: ${receipt.transactionHash}`);
-      console.log("Swap completed:", receipt);
-    } catch (error) {
-      console.error("Swap failed:", error);
-      setStatus(
-        `Swap failed: ${
-          error instanceof Error ? error.message : "Unknown error"
-        }`
-      );
-    } finally {
-      setIsExecuting(false);
-    }
-  };
+  const [isExecuting] = useState(false);
+  const [status] = useState("");
 
   return (
     <div className="min-h-screen">
