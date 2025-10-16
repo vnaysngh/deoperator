@@ -97,7 +97,7 @@ dexluthor.ai/
 │   │   │       └── route.ts        # Legacy swap API endpoint
 │   │   ├── layout.tsx              # Root layout with providers
 │   │   ├── page.tsx                # Main chat interface
-│   │   └── global.css              # Global Tailwind styles
+│   │   └── global.css              # Global Tailwind styles (imported in layout)
 │   ├── components/
 │   │   ├── Chat.tsx                # Chat UI component with CoW integration
 │   │   ├── WalletConnect.tsx       # Wallet connection button
