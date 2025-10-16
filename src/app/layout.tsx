@@ -4,9 +4,9 @@ import "@rainbow-me/rainbowkit/styles.css";
 import { Providers } from "@/components/Providers";
 
 export const metadata: Metadata = {
-  title: "DexLuthor | AI-Powered Uniswap Trading",
+  title: "DexLuthor | AI-Powered CoW Protocol Trading",
   description:
-    "Trade tokens on Uniswap using natural language with AI assistance"
+    "Swap tokens across Ethereum, BNB, Polygon, Base, and Arbitrum using natural language with CoW Protocol."
 };
 
 export default function RootLayout({

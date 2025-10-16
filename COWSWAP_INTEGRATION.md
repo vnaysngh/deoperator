@@ -319,7 +319,7 @@ Body: {
 
 ## Advantages of Intent-Based Swaps
 
-### Traditional AMM Swaps (SushiSwap, Uniswap)
+### Traditional AMM Swaps
 - Execute immediately at current pool price
 - Subject to MEV (frontrunning, sandwich attacks)
 - Gas costs paid by user
@@ -335,7 +335,7 @@ Body: {
 
 ## Token Support
 
-The application supports 1,200+ tokens through Uniswap token lists:
+The application supports thousands of tokens via curated lists and CoinGecko enrichment:
 
 ### Arbitrum (42161)
 - **Stablecoins**: USDC, USDT, DAI

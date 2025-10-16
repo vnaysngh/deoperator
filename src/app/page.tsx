@@ -131,7 +131,7 @@ export default function Home() {
               Real-time Quotes
             </h3>
             <p className="text-sm text-gray-400">
-              Get instant price quotes from Uniswap before executing.
+              Get instant CoW Protocol quotes before executing.
             </p>
           </div>
 

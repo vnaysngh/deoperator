@@ -20,6 +20,10 @@ function getCowChainId(chainId: number): SupportedChainId {
   switch (chainId) {
     case 1:
       return SupportedChainId.MAINNET;
+    case 56:
+      return SupportedChainId.BNB;
+    case 137:
+      return SupportedChainId.POLYGON;
     case 100:
       return SupportedChainId.GNOSIS_CHAIN;
     case 42161:
@@ -42,6 +46,7 @@ function createTradingSdk(
   walletClient: WalletClient,
   chainId: number
 ): TradingSdk {
+  console.log("[CLIENT SDK] createTradingSdk()", { chainId });
   const adapter = new ViemAdapter({
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     provider: publicClient as any,
@@ -78,7 +83,15 @@ export async function getSwapQuote(
     chainId: number;
   }
 ) {
-  console.log("[CLIENT SDK] Creating Trading SDK instance...");
+  console.log("[CLIENT SDK] getSwapQuote()", {
+    sellToken: params.sellToken,
+    buyToken: params.buyToken,
+    amount: params.amount,
+    chainId: params.chainId,
+    sellTokenDecimals: params.sellTokenDecimals,
+    buyTokenDecimals: params.buyTokenDecimals,
+    userAddress: params.userAddress
+  });
   const sdk = createTradingSdk(publicClient, walletClient, params.chainId);
 
   console.log("[CLIENT SDK] Requesting quote from Trading SDK...");
@@ -96,7 +109,10 @@ export async function getSwapQuote(
   // Get quote from Trading SDK
   // Returns: { quoteResults, postSwapOrderFromQuote }
   const quoteResponse = await sdk.getQuote(quoteParams);
-  console.log("[CLIENT SDK] Quote received from Trading SDK");
+  console.log("[CLIENT SDK] Quote received from Trading SDK", {
+    hasQuoteResults: Boolean(quoteResponse.quoteResults),
+    hasPostSwapOrder: Boolean(quoteResponse.postSwapOrderFromQuote)
+  });
 
   return quoteResponse;
 }
@@ -129,7 +145,13 @@ export async function quoteAndSubmitSwap(
     feeAmount: bigint;
   };
 }> {
-  console.log("[CLIENT SDK] Starting quote and submit flow...");
+  console.log("[CLIENT SDK] quoteAndSubmitSwap()", {
+    sellToken: params.sellToken,
+    buyToken: params.buyToken,
+    amount: params.amount,
+    chainId: params.chainId,
+    userAddress: params.userAddress
+  });
 
   // Step 1: Get quote from Trading SDK
   const { quoteResults, postSwapOrderFromQuote } = await getSwapQuote(
@@ -139,6 +161,9 @@ export async function quoteAndSubmitSwap(
   );
 
   if (!quoteResults || !quoteResults.amountsAndCosts) {
+    console.error("[CLIENT SDK] Quote missing amountsAndCosts", {
+      hasQuoteResults: Boolean(quoteResults)
+    });
     throw new Error("Failed to get quote from Trading SDK");
   }
 
@@ -192,7 +217,11 @@ export async function getCowProtocolAllowance(
     chainId: number;
   }
 ): Promise<bigint> {
-  console.log("[CLIENT SDK] Checking CoW Protocol allowance...");
+  console.log("[CLIENT SDK] getCowProtocolAllowance()", {
+    tokenAddress: params.tokenAddress,
+    owner: params.owner,
+    chainId: params.chainId
+  });
   const sdk = createTradingSdk(publicClient, walletClient, params.chainId);
 
   const allowance = await sdk.getCowProtocolAllowance({
@@ -200,7 +229,9 @@ export async function getCowProtocolAllowance(
     owner: params.owner
   });
 
-  console.log("[CLIENT SDK] Current allowance:", allowance.toString());
+  console.log("[CLIENT SDK] Current allowance", {
+    allowance: allowance.toString()
+  });
   return allowance;
 }
 
@@ -216,7 +247,11 @@ export async function approveCowProtocol(
     chainId: number;
   }
 ): Promise<string> {
-  console.log("[CLIENT SDK] Approving CoW Protocol...");
+  console.log("[CLIENT SDK] approveCowProtocol()", {
+    tokenAddress: params.tokenAddress,
+    amount: params.amount.toString(),
+    chainId: params.chainId
+  });
   const sdk = createTradingSdk(publicClient, walletClient, params.chainId);
 
   const txHash = await sdk.approveCowProtocol({
@@ -224,7 +259,7 @@ export async function approveCowProtocol(
     amount: params.amount
   });
 
-  console.log("[CLIENT SDK] Approval transaction:", txHash);
+  console.log("[CLIENT SDK] Approval transaction", { txHash });
   return txHash;
 }
 

@@ -1,7 +1,12 @@
 import { Token } from '@uniswap/sdk-core'
-import { CHAIN_IDS } from './chains'
+import { CHAIN_IDS, getViemChain } from './chains'
+import {
+  getCoinDetailsBySymbol,
+  getPlatformDetailForChain
+} from './coingecko'
 
-// Token list URLs
+import { createPublicClient, http, erc20Abi } from 'viem'
+
 const TOKEN_LISTS = {
   UNISWAP: 'https://tokens.uniswap.org',
   PANCAKESWAP: 'https://tokens.pancakeswap.finance/pancakeswap-extended.json'
@@ -29,63 +34,87 @@ interface TokenList {
   tokens: TokenListToken[]
 }
 
-// In-memory cache for token lists
-let tokenCache: Record<number, Record<string, Token>> | null = null
+const SUPPORTED_CHAIN_IDS = [
+  CHAIN_IDS.ETHEREUM,
+  CHAIN_IDS.BNB,
+  CHAIN_IDS.POLYGON,
+  CHAIN_IDS.BASE,
+  CHAIN_IDS.ARBITRUM
+]
+
+type TokenCache = Record<number, Record<string, Token>>
+
+let tokenCache: TokenCache | null = null
 let lastFetchTime = 0
 const CACHE_DURATION = 1000 * 60 * 60 // 1 hour
 
 /**
+ * Helper to prepare the in-memory token map
+ */
+function createEmptyTokenMap(): TokenCache {
+  const map: TokenCache = {}
+  SUPPORTED_CHAIN_IDS.forEach((chainId) => {
+    map[chainId] = {}
+  })
+  return map
+}
+
+/**
  * Fetches and caches token lists from trusted sources
  */
-async function fetchTokenLists(): Promise<Record<number, Record<string, Token>>> {
+async function fetchTokenLists(): Promise<TokenCache> {
   console.log('[TOKENS] Fetching token lists from trusted sources...')
 
-  const tokens: Record<number, Record<string, Token>> = {
-    [CHAIN_IDS.ARBITRUM]: {},
-    [CHAIN_IDS.BNB]: {}
-  }
+  const tokens = createEmptyTokenMap()
 
   try {
-    // Fetch Uniswap token list (includes Arbitrum bridged tokens)
     console.log('[TOKENS] Fetching Uniswap token list...')
     const uniswapResponse = await fetch(TOKEN_LISTS.UNISWAP)
     const uniswapData: TokenList = await uniswapResponse.json()
 
-    // Extract Arbitrum tokens (native and bridged)
-    uniswapData.tokens.forEach(token => {
-      if (token.chainId === CHAIN_IDS.ARBITRUM) {
-        // Native Arbitrum token
-        const upperSymbol = token.symbol.toUpperCase()
-        tokens[CHAIN_IDS.ARBITRUM][upperSymbol] = new Token(
-          CHAIN_IDS.ARBITRUM,
+    uniswapData.tokens.forEach((token) => {
+      const upperSymbol = token.symbol.toUpperCase()
+
+      if (tokens[token.chainId]) {
+        tokens[token.chainId][upperSymbol] = new Token(
+          token.chainId,
           token.address,
           token.decimals,
           token.symbol,
           token.name
         )
-      } else if (token.extensions?.bridgeInfo?.[String(CHAIN_IDS.ARBITRUM)]) {
-        // Bridged token on Arbitrum
-        const bridgeInfo = token.extensions.bridgeInfo[String(CHAIN_IDS.ARBITRUM)]
-        const upperSymbol = token.symbol.toUpperCase()
-        tokens[CHAIN_IDS.ARBITRUM][upperSymbol] = new Token(
-          CHAIN_IDS.ARBITRUM,
-          bridgeInfo.tokenAddress,
-          token.decimals,
-          token.symbol,
-          token.name
-        )
+      }
+
+      if (token.extensions?.bridgeInfo) {
+        for (const [bridgeChainId, info] of Object.entries(
+          token.extensions.bridgeInfo
+        )) {
+          const numericChainId = Number(bridgeChainId)
+          if (tokens[numericChainId] && info?.tokenAddress) {
+            tokens[numericChainId][upperSymbol] = new Token(
+              numericChainId,
+              info.tokenAddress,
+              token.decimals,
+              token.symbol,
+              token.name
+            )
+          }
+        }
       }
     })
 
-    console.log(`[TOKENS] Loaded ${Object.keys(tokens[CHAIN_IDS.ARBITRUM]).length} Arbitrum tokens`)
+    console.log('[TOKENS] Uniswap list counts', {
+      ethereum: Object.keys(tokens[CHAIN_IDS.ETHEREUM]).length,
+      polygon: Object.keys(tokens[CHAIN_IDS.POLYGON]).length,
+      base: Object.keys(tokens[CHAIN_IDS.BASE]).length,
+      arbitrum: Object.keys(tokens[CHAIN_IDS.ARBITRUM]).length
+    })
 
-    // Fetch PancakeSwap token list (includes BNB Chain tokens)
     console.log('[TOKENS] Fetching PancakeSwap token list...')
     const pancakeResponse = await fetch(TOKEN_LISTS.PANCAKESWAP)
     const pancakeData: TokenList = await pancakeResponse.json()
 
-    // Extract BNB Chain tokens
-    pancakeData.tokens.forEach(token => {
+    pancakeData.tokens.forEach((token) => {
       if (token.chainId === CHAIN_IDS.BNB) {
         const upperSymbol = token.symbol.toUpperCase()
         tokens[CHAIN_IDS.BNB][upperSymbol] = new Token(
@@ -98,72 +127,84 @@ async function fetchTokenLists(): Promise<Record<number, Record<string, Token>>>
       }
     })
 
-    console.log(`[TOKENS] Loaded ${Object.keys(tokens[CHAIN_IDS.BNB]).length} BNB Chain tokens`)
+    console.log(
+      `[TOKENS] Pancake list count ${Object.keys(tokens[CHAIN_IDS.BNB]).length}`
+    )
 
     return tokens
   } catch (error) {
     console.error('[TOKENS] Error fetching token lists:', error)
-
-    // Fallback to minimal hardcoded list
     console.log('[TOKENS] Using fallback token list')
     return getFallbackTokens()
   }
 }
 
 /**
- * Fallback tokens if fetch fails - includes most popular tokens
+ * Fallback tokens if fetch fails - includes popular assets
  */
-function getFallbackTokens(): Record<number, Record<string, Token>> {
-  return {
-    [CHAIN_IDS.BNB]: {
-      // Stablecoins
-      USDC: new Token(56, '0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d', 18, 'USDC', 'USD Coin'),
-      USDT: new Token(56, '0x55d398326f99059fF775485246999027B3197955', 18, 'USDT', 'Tether USD'),
-      DAI: new Token(56, '0x1AF3F329e8BE154074D8769D1FFa4eE058B1DBc3', 18, 'DAI', 'Dai Stablecoin'),
-      BUSD: new Token(56, '0xe9e7CEA3DedcA5984780Bafc599bD69ADd087D56', 18, 'BUSD', 'Binance USD'),
-      // Major tokens
-      WBNB: new Token(56, '0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c', 18, 'WBNB', 'Wrapped BNB'),
-      WETH: new Token(56, '0x2170Ed0880ac9A755fd29B2688956BD959F933F8', 18, 'WETH', 'Wrapped Ether'),
-      BTCB: new Token(56, '0x7130d2A12B9BCbFAe4f2634d864A1Ee1Ce3Ead9c', 18, 'BTCB', 'Bitcoin BEP2'),
-      CAKE: new Token(56, '0x0E09FaBB73Bd3Ade0a17ECC321fD13a19e81cE82', 18, 'CAKE', 'PancakeSwap Token'),
-      ADA: new Token(56, '0x3EE2200Efb3400fAbB9AacF31297cBdD1d435D47', 18, 'ADA', 'Cardano Token'),
-    },
-    [CHAIN_IDS.ARBITRUM]: {
-      // Stablecoins
-      USDC: new Token(42161, '0xaf88d065e77c8cC2239327C5EDb3A432268e5831', 6, 'USDC', 'USD Coin'),
-      USDT: new Token(42161, '0xFd086bC7CD5C481DCC9C85ebE478A1C0b69FCbb9', 6, 'USDT', 'Tether USD'),
-      DAI: new Token(42161, '0xDA10009cBd5D07dd0CeCc66161FC93D7c9000da1', 18, 'DAI', 'Dai Stablecoin'),
-      // Major tokens
-      WETH: new Token(42161, '0x82aF49447D8a07e3bd95BD0d56f35241523fBab1', 18, 'WETH', 'Wrapped Ether'),
-      WBTC: new Token(42161, '0x2f2a2543B76A4166549F7aaB2e75Bef0aefC5B0f', 8, 'WBTC', 'Wrapped BTC'),
-      ARB: new Token(42161, '0x912CE59144191C1204E64559FE8253a0e49E6548', 18, 'ARB', 'Arbitrum'),
-      GMX: new Token(42161, '0xfc5A1A6EB076a2C7aD06eD22C90d7E710E35ad0a', 18, 'GMX', 'GMX'),
-      UNI: new Token(42161, '0xFa7F8980b0f1E64A2062791cc3b0871572f1F7f0', 18, 'UNI', 'Uniswap'),
-    }
+function getFallbackTokens(): TokenCache {
+  const map = createEmptyTokenMap()
+
+  map[CHAIN_IDS.ETHEREUM] = {
+    WETH: new Token(1, '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2', 18, 'WETH', 'Wrapped Ether'),
+    USDC: new Token(1, '0xA0b86991c6218b36c1d19d4a2e9eb0ce3606eb48', 6, 'USDC', 'USD Coin'),
+    USDT: new Token(1, '0xdAC17F958D2ee523a2206206994597C13D831ec7', 6, 'USDT', 'Tether USD'),
+    DAI: new Token(1, '0x6B175474E89094C44Da98b954EedeAC495271d0F', 18, 'DAI', 'Dai Stablecoin'),
+    WBTC: new Token(1, '0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599', 8, 'WBTC', 'Wrapped Bitcoin')
   }
+
+  map[CHAIN_IDS.BNB] = {
+    USDC: new Token(56, '0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d', 18, 'USDC', 'USD Coin'),
+    USDT: new Token(56, '0x55d398326f99059fF775485246999027B3197955', 18, 'USDT', 'Tether USD'),
+    DAI: new Token(56, '0x1AF3F329e8BE154074D8769D1FFa4eE058B1DBc3', 18, 'DAI', 'Dai Stablecoin'),
+    WBNB: new Token(56, '0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c', 18, 'WBNB', 'Wrapped BNB'),
+    CAKE: new Token(56, '0x0E09FaBB73Bd3Ade0a17ECC321fD13a19e81cE82', 18, 'CAKE', 'PancakeSwap Token')
+  }
+
+  map[CHAIN_IDS.POLYGON] = {
+    WMATIC: new Token(137, '0x0d500B1d8E8eF31E21C99d1Db9A6444d3ADf1270', 18, 'WMATIC', 'Wrapped MATIC'),
+    USDC: new Token(137, '0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174', 6, 'USDC', 'USD Coin'),
+    USDT: new Token(137, '0xc2132D05D31c914a87C6611C10748AEb04B58e8F', 6, 'USDT', 'Tether USD'),
+    DAI: new Token(137, '0x8f3Cf7ad23Cd3CaDbD9735AFf958023239c6A063', 18, 'DAI', 'Dai Stablecoin'),
+    WETH: new Token(137, '0x7ceB23fD6bC0adD59E62ac25578270cFf1b9f619', 18, 'WETH', 'Wrapped Ether')
+  }
+
+  map[CHAIN_IDS.BASE] = {
+    WETH: new Token(8453, '0x4200000000000000000000000000000000000006', 18, 'WETH', 'Wrapped Ether'),
+    USDC: new Token(8453, '0x833589fCD6eDb6E08f4C7C32D4f71b54bdA02913', 6, 'USDC', 'USD Coin'),
+    DAI: new Token(8453, '0x50c5725949A6F0c72E6C4a641F24049A917DB0Cb', 18, 'DAI', 'Dai Stablecoin'),
+    USDT: new Token(8453, '0xde3A24028580884448a5397872046a019649b084', 6, 'USDT', 'Tether USD'),
+    CBETH: new Token(8453, '0xbe9895146f7af43049ca1c1ae358b0541ea49704', 18, 'cbETH', 'Coinbase Wrapped Staked ETH')
+  }
+
+  map[CHAIN_IDS.ARBITRUM] = {
+    USDC: new Token(42161, '0xaf88d065e77c8cC2239327C5EDb3A432268e5831', 6, 'USDC', 'USD Coin'),
+    USDT: new Token(42161, '0xFd086bC7CD5C481DCC9C85ebE478A1C0b69FCbb9', 6, 'USDT', 'Tether USD'),
+    DAI: new Token(42161, '0xDA10009cBd5D07dd0CeCc66161FC93D7c9000da1', 18, 'DAI', 'Dai Stablecoin'),
+    WETH: new Token(42161, '0x82aF49447D8a07e3bd95BD0d56f35241523fBab1', 18, 'WETH', 'Wrapped Ether'),
+    ARB: new Token(42161, '0x912CE59144191C1204E64559FE8253a0e49E6548', 18, 'ARB', 'Arbitrum')
+  }
+
+  return map
 }
 
 /**
  * Gets tokens with caching and auto-refresh
  */
-async function getTokens(): Promise<Record<number, Record<string, Token>>> {
+async function getTokens(): Promise<TokenCache> {
   const now = Date.now()
 
-  // Return cached tokens if still fresh
-  if (tokenCache && (now - lastFetchTime) < CACHE_DURATION) {
+  if (tokenCache && now - lastFetchTime < CACHE_DURATION) {
     return tokenCache
   }
 
-  // Fetch new token lists
   tokenCache = await fetchTokenLists()
   lastFetchTime = now
-
   return tokenCache
 }
 
 /**
  * Get token by symbol for a specific chain
- * This function now searches through the dynamic token list
  */
 export async function getTokenBySymbol(symbol: string, chainId: number): Promise<Token | undefined> {
   const normalized = normalizeTokenSymbol(symbol, chainId)
@@ -177,11 +218,15 @@ export async function getTokenBySymbol(symbol: string, chainId: number): Promise
     return chainTokens[upperSymbol]
   }
 
-  // Try searching with original symbol (case-insensitive match)
   const originalUpper = symbol.toUpperCase()
   if (originalUpper !== upperSymbol && chainTokens && chainTokens[originalUpper]) {
     console.log(`✓ Found ${originalUpper} on chain ${chainId}`)
     return chainTokens[originalUpper]
+  }
+
+  const fallbackToken = await loadTokenFromCoinGecko(normalized, symbol, chainId, tokens)
+  if (fallbackToken) {
+    return fallbackToken
   }
 
   console.error(`✗ Token ${symbol} (normalized: ${normalized}) not found on chain ${chainId}`)
@@ -190,29 +235,27 @@ export async function getTokenBySymbol(symbol: string, chainId: number): Promise
 
 /**
  * Get token by contract address
- * Fetches token details directly from the blockchain using the ERC20 contract
  */
 export async function getTokenByAddress(address: string, chainId: number): Promise<Token | undefined> {
   try {
     console.log(`[TOKENS] Fetching token info for address ${address} on chain ${chainId}`)
 
-    // Check if it's a valid address format (starts with 0x and is 42 chars)
     if (!address.startsWith('0x') || address.length !== 42) {
       console.error(`✗ Invalid address format: ${address}`)
       return undefined
     }
 
-    // Import viem for on-chain token data fetching
-    const { createPublicClient, http, erc20Abi } = await import('viem')
-    const { arbitrum, bsc } = await import('viem/chains')
+    const viemChain = getViemChain(chainId)
+    if (!viemChain) {
+      console.error(`[TOKENS] Unsupported chain for address lookup: ${chainId}`)
+      return undefined
+    }
 
-    const chain = chainId === 42161 ? arbitrum : bsc
     const publicClient = createPublicClient({
-      chain,
+      chain: viemChain,
       transport: http()
     })
 
-    // Fetch token details from the contract
     const [symbol, name, decimals] = await Promise.all([
       publicClient.readContract({
         address: address as `0x${string}`,
@@ -231,8 +274,8 @@ export async function getTokenByAddress(address: string, chainId: number): Promi
       })
     ])
 
-    const token = new Token(chainId, address, decimals, symbol, name)
-    console.log(`✓ Found token ${symbol} (${name}) at ${address} on chain ${chainId}`)
+    const token = new Token(chainId, address, Number(decimals), String(symbol), String(name))
+    console.log(`✓ Found token ${symbol.toString()} (${name.toString()}) at ${address} on chain ${chainId}`)
 
     return token
   } catch (error) {
@@ -241,63 +284,51 @@ export async function getTokenByAddress(address: string, chainId: number): Promi
   }
 }
 
-/**
- * Get all available tokens for a chain
- */
 export async function getTokensForChain(chainId: number): Promise<Record<string, Token>> {
   const tokens = await getTokens()
   return tokens[chainId] || {}
 }
 
-/**
- * Get list of all supported chain IDs
- */
 export function getSupportedChainIds(): number[] {
-  return [CHAIN_IDS.ARBITRUM, CHAIN_IDS.BNB]
+  return [...SUPPORTED_CHAIN_IDS]
 }
 
-/**
- * Normalize token symbol to handle common variations
- */
 export function normalizeTokenSymbol(input: string, chainId: number): string {
   const normalized = input.toUpperCase().trim()
 
-  // Handle common variations and full names
   const variations: Record<string, string> = {
-    'ETH': 'WETH',
-    'ETHEREUM': 'WETH',
-    'BITCOIN': 'WBTC',
-    'BTC': 'WBTC',
-    'USDCOIN': 'USDC',
-    'TETHER': 'USDT',
-    'CARDANO': 'ADA',
+    ETH: 'WETH',
+    ETHEREUM: 'WETH',
+    BITCOIN: 'WBTC',
+    BTC: 'WBTC',
+    USDCOIN: 'USDC',
+    TETHER: 'USDT',
+    CARDANO: 'ADA',
+    MATIC: chainId === CHAIN_IDS.POLYGON ? 'WMATIC' : 'MATIC'
   }
 
-  // Chain-specific variations
   if (chainId === CHAIN_IDS.BNB) {
     if (normalized === 'BNB') return 'WBNB'
-    if (normalized === 'WBTC' || normalized === 'BTC' || normalized === 'BITCOIN') return 'BTCB'
+    if (['WBTC', 'BTC', 'BITCOIN'].includes(normalized)) return 'BTCB'
   }
 
   if (chainId === CHAIN_IDS.ARBITRUM) {
     if (normalized === 'ETHEREUM' || normalized === 'ETH') return 'WETH'
   }
 
+  if (chainId === CHAIN_IDS.POLYGON && normalized === 'ETH') {
+    return 'WETH'
+  }
+
   return variations[normalized] || normalized
 }
 
-/**
- * Format token amount from human-readable to smallest unit
- */
 export function formatTokenAmount(amount: string, decimals: number): bigint {
   const [whole, fraction = ''] = amount.split('.')
   const paddedFraction = fraction.padEnd(decimals, '0').slice(0, decimals)
   return BigInt(whole + paddedFraction)
 }
 
-/**
- * Parse token amount from smallest unit to human-readable
- */
 export function parseTokenAmount(amount: bigint, decimals: number): string {
   const amountStr = amount.toString().padStart(decimals + 1, '0')
   const whole = amountStr.slice(0, -decimals) || '0'
@@ -305,10 +336,62 @@ export function parseTokenAmount(amount: bigint, decimals: number): string {
   return `${whole}.${fraction}`
 }
 
-/**
- * Preload token lists (call this on app startup)
- */
 export async function preloadTokenLists(): Promise<void> {
   console.log('[TOKENS] Preloading token lists...')
   await getTokens()
+}
+
+async function loadTokenFromCoinGecko(
+  normalizedSymbol: string,
+  originalSymbol: string,
+  chainId: number,
+  tokensCache: TokenCache
+): Promise<Token | undefined> {
+  try {
+    console.log(`[TOKENS] Attempting CoinGecko lookup for ${normalizedSymbol} on chain ${chainId}`)
+    const details = await getCoinDetailsBySymbol(normalizedSymbol)
+
+    if (!details) {
+      console.log(`[TOKENS] CoinGecko did not return details for ${normalizedSymbol}`)
+      return undefined
+    }
+
+    const platformDetail = getPlatformDetailForChain(details, chainId)
+    if (!platformDetail || !platformDetail.contract_address) {
+      console.log(`[TOKENS] CoinGecko details for ${details.name} lack contract on chain ${chainId}`)
+      return undefined
+    }
+
+    const contractAddress = platformDetail.contract_address
+    if (!contractAddress.startsWith('0x') || contractAddress.length !== 42) {
+      console.log(`[TOKENS] CoinGecko returned invalid contract address for ${details.name}: ${contractAddress}`)
+      return undefined
+    }
+
+    const decimals =
+      typeof platformDetail.decimal_place === 'number' && platformDetail.decimal_place > 0
+        ? platformDetail.decimal_place
+        : 18
+
+    const resolvedSymbol = (details.symbol || normalizedSymbol).toUpperCase()
+    const name = details.name || resolvedSymbol
+    const token = new Token(chainId, contractAddress, decimals, resolvedSymbol, name)
+
+    const chainTokens = tokensCache[chainId] || (tokensCache[chainId] = {})
+
+    chainTokens[resolvedSymbol] = token
+    if (resolvedSymbol !== normalizedSymbol.toUpperCase()) {
+      chainTokens[normalizedSymbol.toUpperCase()] = token
+    }
+    const originalUpper = originalSymbol.toUpperCase()
+    if (originalUpper !== resolvedSymbol) {
+      chainTokens[originalUpper] = token
+    }
+
+    console.log(`[TOKENS] Added ${resolvedSymbol} from CoinGecko for chain ${chainId}`)
+    return token
+  } catch (error) {
+    console.error(`[TOKENS] CoinGecko lookup failed for ${normalizedSymbol}:`, error)
+    return undefined
+  }
 }

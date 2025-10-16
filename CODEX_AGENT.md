@@ -7,10 +7,10 @@ This is a quick-reference for future Codex-style agents dropping into **Unipilot
 - **Chat backend** is a single `POST` handler in `src/app/api/chat/route.ts` wired to `@ai-sdk/openai`. The route performs tool calling and streams results back to the client.
 - **Protocol logic** is split under `src/lib`:
   - `cowswap-client.ts` runs entirely in the browser and wraps the CoW Protocol Trading SDK (quote + submit, allowance helpers).
-  - `sushiswap.ts` hits Sushi’s quote APIs for non-CoW flows.
-  - `tokens.ts` builds a cached token registry by merging the Uniswap and PancakeSwap lists (fallback map included).
+  - `prices.ts` resolves USD pricing through Moralis.
+  - `tokens.ts` builds a cached token registry from curated lists with CoinGecko fallbacks.
   - `wallet-balances.ts` fetches Moralis wallet holdings and enriches them with USD valuations.
-  - `chains.ts` restricts support to Arbitrum (42161) and BNB Chain (56); anything else must be declined.
+  - `chains.ts` enumerates the supported chains (Ethereum, BNB, Polygon, Base, Arbitrum).
 
 ## Chat Surface Fundamentals (`src/components/Chat.tsx`)
 - The Vercel AI `useChat` hook streams deltas; `DefaultChatTransport` injects the connected wallet address via the `x-wallet-address` header.
@@ -33,8 +33,7 @@ This is a quick-reference for future Codex-style agents dropping into **Unipilot
 ## Data & Integrations
 - **Token discovery** caches results for an hour; keep cache invalidation in mind when editing token-metadata flows.
 - **Moralis** (requires `MORALIS_API_KEY`) backs both wallet portfolio lookups and USD pricing.
-- **Sushi API** still handles swap quotes when the chat flow needs Sushi as a fallback path; respect the chain whitelist before hitting the endpoints.
-- **Uniswap fallback** (`swapClient.ts`) still exists for legacy direct router interactions; CoW is the primary path exposed in chat.
+- **CoW Protocol** is the only swap venue; use the Trading SDK on the client and the REST quote endpoint server-side for pre-flight checks.
 
 ## Dev Workflow Essentials
 - Run `npm run dev` for Turbopack, `npm run lint` before shipping, and `node test-cowswap-sdk.js` when touching CoW logic.
@@ -45,7 +44,7 @@ This is a quick-reference for future Codex-style agents dropping into **Unipilot
 ## Edge Cases to Watch
 - Model can finish with `finishReason: "tool-calls"` and empty text; rely on tool payloads to populate the UI.
 - Entire-balance swaps must route through `getSwapQuoteForEntireBalance` so the client can fetch balances and quotes atomically.
-- Decline requests for unsupported chains (Ethereum, Polygon, etc.) and redirect them to Arbitrum or BNB Chain per the system prompt.
+- Ask for the chain if the user doesn’t specify one; we support Ethereum, BNB Chain, Polygon, Base, and Arbitrum.
 - When Moralis or token list fetch fails, the code falls back to a curated token map; preserve that safety net.
 
 Armed with this, you should be able to reason about new features or debugging sessions without spelunking the entire repo first.

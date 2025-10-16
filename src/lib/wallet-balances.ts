@@ -1,5 +1,5 @@
 import { Token } from '@uniswap/sdk-core'
-import { getTokenUSDPrice } from './sushiswap'
+import { getTokenUSDPrice } from './prices'
 import { type PublicClient, type Address, erc20Abi, formatUnits } from 'viem'
 
 export interface TokenBalance {
@@ -69,8 +69,11 @@ async function fetchTokenBalancesFromIndexer(
   try {
     // Map chain IDs to Moralis chain names
     const chainMap: Record<number, string> = {
-      42161: 'arbitrum',
-      56: 'bsc'
+      1: 'eth',
+      56: 'bsc',
+      137: 'polygon',
+      8453: 'base',
+      42161: 'arbitrum'
     }
 
     const chain = chainMap[chainId]

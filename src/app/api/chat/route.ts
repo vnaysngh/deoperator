@@ -6,12 +6,33 @@ import {
   normalizeTokenSymbol,
   formatTokenAmount
 } from "@/lib/tokens";
-import { getTokenUSDPrice } from "@/lib/sushiswap";
-import { getChainName } from "@/lib/chains";
+import { getTokenUSDPrice } from "@/lib/prices";
+import { getChainName, getViemChain } from "@/lib/chains";
+import {
+  getCoinDetailsBySymbol,
+  getChainIdForPlatform
+} from "@/lib/coingecko";
 import { createPublicClient, http, type Address } from "viem";
-import { arbitrum, bsc } from "viem/chains";
 
 export const maxDuration = 30;
+
+type ToolSuccessResult<T extends Record<string, unknown> = Record<string, unknown>> = T & {
+  success: true;
+  message: string;
+};
+
+type ToolErrorResult<T extends Record<string, unknown> = Record<string, unknown>> = T & {
+  success: false;
+  userMessage: string;
+};
+
+function toolSuccess<T extends ToolSuccessResult>(result: T): T {
+  return result;
+}
+
+function toolError<T extends ToolErrorResult>(result: T): T {
+  return result;
+}
 
 export async function POST(req: Request) {
   const { messages }: { messages: UIMessage[] } = await req.json();
@@ -73,17 +94,16 @@ export async function POST(req: Request) {
       }
 
       🔗 Supported Chains:
+      - Ethereum (chainId: 1) ✅
       - Arbitrum (chainId: 42161) ✅
       - BNB Chain (chainId: 56) ✅
-
-      ⚠️ Currently NOT Supported:
-      - Ethereum, Polygon, Unichain - Coming soon! Currently only Arbitrum and BNB Chain are supported.
+      - Polygon (chainId: 137) ✅
+      - Base (chainId: 8453) ✅
 
       Token Support:
-      - Supports 1,200+ verified tokens through Uniswap token lists
-      - Popular tokens: WETH, USDC, USDT, DAI, WBTC, UNI, LINK, AAVE, APE (ApeCoin), PEPE, SHIB, SOL (bridged), etc.
-      - Chain-specific tokens: ARB (Arbitrum), MATIC (Polygon), WBNB/BTCB (BNB Chain)
-      - Bridged tokens: Many tokens exist as bridged versions on multiple chains (e.g., SOL on BNB Chain, AVAX on Ethereum)
+      - Supports thousands of verified tokens via curated lists and CoinGecko enrichment
+      - Popular tokens: WETH, USDC, USDT, DAI, WBTC, LINK, AAVE, ARB, MATIC, WBNB, cbETH, etc.
+      - Bridged and wrapped assets exist across networks (e.g., WETH on Base, BTCB on BNB Chain). Always confirm the chain the user specifies.
 
       Token Lookup Strategy:
       - When user asks for a token, use the token symbol they provide directly
@@ -147,9 +167,11 @@ export async function POST(req: Request) {
       - Examples: "How much ARB for 1 USDC?", "Swap 10 ARB to USDC", "Convert BNB to USDT"
 
       Chain Detection Rules (ONLY when explicitly mentioned):
-      - If user says "arbitrum" or "ARB" → chainId: 42161
-      - If user says "bnb" or "bsc" or "binance" → chainId: 56
-      - If user says "ethereum", "polygon", "unichain" → Politely explain it's not yet supported, suggest Arbitrum or BNB Chain
+      - "ethereum", "eth", or "mainnet" → chainId: 1
+      - "arbitrum" or "arb" → chainId: 42161
+      - "bnb", "bsc", or "binance" → chainId: 56
+      - "polygon" or "matic" → chainId: 137
+      - "base" → chainId: 8453
 
       NEVER assume a default chain. ALWAYS ask if not specified.
 
@@ -271,7 +293,7 @@ export async function POST(req: Request) {
         // Your existing custom tools
         getSwapQuote: tool({
           description:
-            "Get token information for a swap. Returns token addresses and decimals. The client-side SDK will fetch the actual quote. ONLY call this when you have confirmed: fromToken, toToken, amount, AND chainId with the user. Do NOT assume defaults. Only supports Arbitrum (42161) and BNB Chain (56).",
+            "Get token information for a swap. Returns token addresses and decimals. The client-side SDK will fetch the actual quote. ONLY call this when you have confirmed: fromToken, toToken, amount, AND chainId with the user. Do NOT assume defaults. Supports Ethereum (1), BNB Chain (56), Polygon (137), Base (8453), and Arbitrum (42161).",
           inputSchema: z.object({
             fromToken: z
               .string()
@@ -289,7 +311,7 @@ export async function POST(req: Request) {
             chainId: z
               .number()
               .describe(
-                "Chain ID - REQUIRED, must be explicitly provided by user. 42161=Arbitrum, 56=BNB. NO DEFAULT - always ask if not specified"
+                "Chain ID - REQUIRED, must be explicitly provided by user. 1=Ethereum, 56=BNB, 137=Polygon, 8453=Base, 42161=Arbitrum. NO DEFAULT - always ask if not specified"
               )
           }),
           execute: async ({ fromToken, toToken, amount, chainId }) => {
@@ -313,11 +335,11 @@ export async function POST(req: Request) {
               const toTokenInfo = await getTokenBySymbol(normalizedTo, chainId);
 
               if (!fromTokenInfo) {
-                const errorResult = {
+                const errorResult = toolError({
                   success: false,
                   userMessage: `I couldn't find ${fromToken} on ${chainName}. Could you double-check the token symbol? If you have the contract address (0x...), I can look it up directly. Popular tokens include WETH, USDC, USDT, ARB, and DAI.`,
                   error: `Token not found: ${fromToken}`
-                };
+                });
                 console.log(
                   "[TOOL:getSwapQuote] Returning from token error:",
                   JSON.stringify(errorResult, null, 2)
@@ -326,11 +348,11 @@ export async function POST(req: Request) {
               }
 
               if (!toTokenInfo) {
-                const errorResult = {
+                const errorResult = toolError({
                   success: false,
                   userMessage: `I couldn't find ${toToken} on ${chainName}. Could you double-check the token symbol? If you have the contract address (0x...), I can look it up directly. Popular tokens include WETH, USDC, USDT, ARB, and DAI.`,
                   error: `Token not found: ${toToken}`
-                };
+                });
                 console.log(
                   "[TOOL:getSwapQuote] Returning to token error:",
                   JSON.stringify(errorResult, null, 2)
@@ -345,55 +367,69 @@ export async function POST(req: Request) {
                 const sellAmount = parseUnits(amount, fromTokenInfo.decimals);
 
                 // Make a basic quote request to CoW API to check liquidity
-                const quoteUrl = `https://api.cow.fi/${
-                  chainId === 42161
-                    ? "arbitrum_one"
+                const cowApiSlug =
+                  chainId === 1
+                    ? "mainnet"
                     : chainId === 56
-                    ? "bsc"
-                    : "mainnet"
-                }/api/v1/quote`;
+                    ? "bnb"
+                    : chainId === 137
+                    ? "polygon"
+                    : chainId === 8453
+                    ? "base"
+                    : chainId === 42161
+                    ? "arbitrum_one"
+                    : undefined;
 
-                const quoteResponse = await fetch(quoteUrl, {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({
-                    sellToken: fromTokenInfo.address,
-                    buyToken: toTokenInfo.address,
-                    sellAmountBeforeFee: sellAmount.toString(),
-                    from: "0x0000000000000000000000000000000000000000", // Dummy address for quote check
-                    kind: "sell",
-                    priceQuality: "fast"
-                  })
-                });
-
-                if (!quoteResponse.ok) {
-                  const errorText = await quoteResponse.text();
+                if (!cowApiSlug) {
                   console.log(
-                    "[TOOL:getSwapQuote] Quote check failed:",
-                    quoteResponse.status,
-                    errorText
+                    "[TOOL:getSwapQuote] Cow API slug not available for chain, skipping liquidity pre-check",
+                    { chainId }
                   );
+                } else {
+                  const quoteUrl = `https://api.cow.fi/${cowApiSlug}/api/v1/quote`;
 
-                  // Check if it's a liquidity issue
-                  if (
-                    errorText.toLowerCase().includes("liquidity") ||
-                    quoteResponse.status === 404
-                  ) {
-                    const errorMessage = `There isn't enough liquidity to swap ${amount} ${normalizedFrom} for ${normalizedTo} on ${chainName}. Try using a smaller amount or different tokens.`;
+                  const quoteResponse = await fetch(quoteUrl, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                      sellToken: fromTokenInfo.address,
+                      buyToken: toTokenInfo.address,
+                      sellAmountBeforeFee: sellAmount.toString(),
+                      from: "0x0000000000000000000000000000000000000000", // Dummy address for quote check
+                      kind: "sell",
+                      priceQuality: "fast"
+                    })
+                  });
+
+                  if (!quoteResponse.ok) {
+                    const errorText = await quoteResponse.text();
                     console.log(
-                      "[TOOL:getSwapQuote] Returning liquidity error:",
-                      errorMessage
+                      "[TOOL:getSwapQuote] Quote check failed:",
+                      quoteResponse.status,
+                      errorText
                     );
-                    const liquidityErrorResult = {
-                      success: false,
-                      userMessage: errorMessage,
-                      error: "Insufficient liquidity"
-                    };
-                    console.log(
-                      "[TOOL:getSwapQuote] Liquidity error result:",
-                      JSON.stringify(liquidityErrorResult, null, 2)
-                    );
-                    return liquidityErrorResult;
+
+                    // Check if it's a liquidity issue
+                    if (
+                      errorText.toLowerCase().includes("liquidity") ||
+                      quoteResponse.status === 404
+                    ) {
+                      const errorMessage = `There isn't enough liquidity to swap ${amount} ${normalizedFrom} for ${normalizedTo} on ${chainName}. Try using a smaller amount or different tokens.`;
+                      console.log(
+                        "[TOOL:getSwapQuote] Returning liquidity error:",
+                        errorMessage
+                      );
+                      const liquidityErrorResult = toolError({
+                        success: false,
+                        userMessage: errorMessage,
+                        error: "Insufficient liquidity"
+                      });
+                      console.log(
+                        "[TOOL:getSwapQuote] Liquidity error result:",
+                        JSON.stringify(liquidityErrorResult, null, 2)
+                      );
+                      return liquidityErrorResult;
+                    }
                   }
                 }
               } catch (liquidityCheckError) {
@@ -405,7 +441,7 @@ export async function POST(req: Request) {
               }
 
               // Return token info for client-side SDK to use
-              const successResult = {
+              const successResult = toolSuccess({
                 success: true,
                 chain: chainName,
                 chainId,
@@ -416,9 +452,9 @@ export async function POST(req: Request) {
                 fromTokenDecimals: fromTokenInfo.decimals,
                 toTokenAddress: toTokenInfo.address,
                 toTokenDecimals: toTokenInfo.decimals,
-                // Instruction for the client to fetch quote
-                needsClientQuote: true
-              };
+                needsClientQuote: true,
+                message: `Got ${normalizedFrom} → ${normalizedTo} token details on ${chainName}. I'll fetch a fresh CoW quote next.`
+              });
               console.log(
                 "[TOOL:getSwapQuote] Returning success result:",
                 JSON.stringify(successResult, null, 2)
@@ -426,11 +462,11 @@ export async function POST(req: Request) {
               return successResult;
             } catch (error) {
               console.error("[TOOL:getSwapQuote] Caught exception:", error);
-              const exceptionResult = {
+              const exceptionResult = toolError({
                 success: false,
                 userMessage: "Something went wrong. Want to try again?",
                 error: error instanceof Error ? error.message : "Unknown error"
-              };
+              });
               console.log(
                 "[TOOL:getSwapQuote] Returning exception result:",
                 JSON.stringify(exceptionResult, null, 2)
@@ -448,7 +484,9 @@ export async function POST(req: Request) {
             amount: z.string().describe("The amount of input token to swap"),
             chainId: z
               .number()
-              .describe("Chain ID - REQUIRED. 42161=Arbitrum, 56=BNB")
+              .describe(
+                "Chain ID - REQUIRED. 1=Ethereum, 56=BNB, 137=Polygon, 8453=Base, 42161=Arbitrum"
+              )
           }),
           execute: async ({ fromToken, toToken, amount, chainId }) => {
             console.log("[TOOL:createOrder] Getting token info for order:", {
@@ -460,12 +498,11 @@ export async function POST(req: Request) {
             });
 
             if (!walletAddress) {
-              return {
+              return toolError({
                 success: false,
-                userMessage:
-                  "Please connect your wallet first to create orders.",
+                userMessage: "Please connect your wallet first to create orders.",
                 error: "Wallet address not provided"
-              };
+              });
             }
 
             try {
@@ -481,11 +518,11 @@ export async function POST(req: Request) {
               const toTokenInfo = await getTokenBySymbol(normalizedTo, chainId);
 
               if (!fromTokenInfo || !toTokenInfo) {
-                return {
+                return toolError({
                   success: false,
-                  userMessage: "Token not found",
+                  userMessage: "Token not found. Could you double-check the token symbols or share the contract addresses?",
                   error: "Token lookup failed"
-                };
+                });
               }
 
               // Convert amount to smallest unit
@@ -495,7 +532,7 @@ export async function POST(req: Request) {
               );
 
               // Return token info for client-side SDK to use
-              return {
+              return toolSuccess({
                 success: true,
                 chain: chainName,
                 chainId,
@@ -511,20 +548,247 @@ export async function POST(req: Request) {
                 // Instruction for the client to use SDK
                 needsClientSubmission: true,
                 message: `Ready to swap ${amount} ${normalizedFrom} for ${normalizedTo}. The client SDK will now fetch a quote and submit your order.`
-              };
+              });
             } catch (error) {
               console.error("[TOOL:createOrder] Error:", error);
-              return {
+              return toolError({
                 success: false,
                 userMessage: "Something went wrong. Want to try again?",
                 error: error instanceof Error ? error.message : "Unknown error"
+              });
+            }
+          }
+        }),
+        lookupTokenProfile: tool({
+          description:
+            "Fetch comprehensive token metadata and market data from CoinGecko. Use this when the user asks about token price, market cap, or contract addresses.",
+          inputSchema: z.object({
+            symbol: z
+              .string()
+              .describe("Token symbol or search query, e.g., APEX or WETH"),
+            chainId: z
+              .number()
+              .optional()
+              .describe(
+                "Optional chain ID to highlight the contract on a specific network (1=Ethereum, 56=BNB, 137=Polygon, 8453=Base, 42161=Arbitrum)"
+              )
+          }),
+          execute: async ({ symbol, chainId }) => {
+            const formatUsd = (value?: number | null) => {
+              if (typeof value !== "number" || Number.isNaN(value)) {
+                return undefined;
+              }
+
+              if (value >= 1) {
+                return `$${value.toLocaleString("en-US", {
+                  maximumFractionDigits: 2
+                })}`;
+              }
+
+              if (value === 0) {
+                return "$0.00";
+              }
+
+              return `$${value.toLocaleString("en-US", {
+                maximumFractionDigits: 6
+              })}`;
+            };
+
+            try {
+              const details = await getCoinDetailsBySymbol(symbol);
+
+              if (!details) {
+                return toolError({
+                  success: false,
+                  userMessage: `I couldn't find an exact match for "${symbol}". Could you double-check the symbol or share the contract address?`
+                });
+              }
+
+              const resolvedSymbol = details.symbol
+                ? details.symbol.toUpperCase()
+                : symbol.toUpperCase();
+
+              const normalizeDescription = (text?: string) => {
+                if (!text) return undefined;
+                const collapsed = text
+                  .replace(/\r?\n+/g, " ")
+                  .replace(/\s+/g, " ")
+                  .trim();
+                if (!collapsed) return undefined;
+                return collapsed;
               };
+
+              const description = normalizeDescription(details.description?.en);
+              const shortDescription =
+                description && description.length > 360
+                  ? `${description.slice(0, 357)}...`
+                  : description;
+
+              const platformEntries = new Map<
+                string,
+                {
+                  address: string;
+                  decimals: number | null;
+                  geckoTerminalUrl?: string | null;
+                  chainId?: number;
+                  chainName: string;
+                }
+              >();
+
+              const addPlatform = (
+                platformId: string,
+                address: string,
+                decimals: number | null,
+                geckoTerminalUrl?: string | null
+              ) => {
+                if (!address) return;
+
+                const trimmedAddress = address.trim();
+                const normalizedAddress =
+                  trimmedAddress.startsWith("0x") &&
+                  trimmedAddress.length === 42
+                    ? trimmedAddress.toLowerCase()
+                    : trimmedAddress;
+
+                const mappedChainId = getChainIdForPlatform(platformId);
+                const chainName = mappedChainId
+                  ? getChainName(mappedChainId)
+                  : platformId
+                      .split("-")
+                      .map(
+                        (part) => part.charAt(0).toUpperCase() + part.slice(1)
+                      )
+                      .join(" ");
+
+                platformEntries.set(platformId, {
+                  address: normalizedAddress,
+                  decimals,
+                  geckoTerminalUrl,
+                  chainId: mappedChainId,
+                  chainName
+                });
+              };
+
+              if (details.detail_platforms) {
+                for (const [platformId, data] of Object.entries(
+                  details.detail_platforms
+                )) {
+                  if (data?.contract_address) {
+                    addPlatform(
+                      platformId,
+                      data.contract_address,
+                      data.decimal_place ?? null,
+                      data.geckoterminal_url ?? undefined
+                    );
+                  }
+                }
+              }
+
+              if (details.platforms) {
+                for (const [platformId, address] of Object.entries(
+                  details.platforms
+                )) {
+                  if (address && !platformEntries.has(platformId)) {
+                    addPlatform(platformId, address, null);
+                  }
+                }
+              }
+
+              const contracts = Array.from(platformEntries.entries()).map(
+                ([platformId, data]) => ({
+                  platformId,
+                  ...data
+                })
+              );
+
+              const preferredContract = chainId
+                ? contracts.find((contract) => contract.chainId === chainId) ||
+                  null
+                : contracts[0] || null;
+
+              const priceUsd =
+                details.market_data?.current_price?.usd ?? undefined;
+              const marketCapUsd =
+                details.market_data?.market_cap?.usd ?? undefined;
+              const totalVolumeUsd =
+                details.market_data?.total_volume?.usd ?? undefined;
+              const priceChange24hPercent =
+                details.market_data?.price_change_percentage_24h ?? undefined;
+
+              const messageParts: string[] = [];
+              messageParts.push(
+                `Found ${details.name} (${resolvedSymbol}) on CoinGecko.`
+              );
+
+              if (priceUsd !== undefined) {
+                const priceFormatted = formatUsd(priceUsd);
+                if (priceFormatted) {
+                  messageParts.push(`Last price: ${priceFormatted} USD.`);
+                }
+              }
+
+              if (marketCapUsd !== undefined) {
+                const marketCapFormatted = formatUsd(marketCapUsd);
+                if (marketCapFormatted) {
+                  messageParts.push(`Market cap: ${marketCapFormatted}.`);
+                }
+              }
+
+              if (preferredContract) {
+                messageParts.push(
+                  `Primary contract (${preferredContract.chainName}): ${preferredContract.address}`
+                );
+              } else if (contracts.length === 0) {
+                messageParts.push(
+                  "CoinGecko did not list any contract addresses for this token."
+                );
+              }
+
+              return toolSuccess({
+                success: true,
+                coingeckoId: details.id,
+                name: details.name,
+                symbol: resolvedSymbol,
+                marketCapRank: details.market_cap_rank ?? undefined,
+                priceUsd,
+                marketCapUsd,
+                totalVolumeUsd,
+                priceChange24hPercent,
+                description: shortDescription,
+                fullDescription: description,
+                image:
+                  details.image?.large ||
+                  details.image?.small ||
+                  details.image?.thumb,
+                links: {
+                  homepage: details.links?.homepage?.filter(Boolean)?.[0],
+                  twitter: details.links?.twitter_screen_name
+                    ? `https://twitter.com/${details.links.twitter_screen_name}`
+                    : undefined,
+                  chat: details.links?.chat_url?.filter(Boolean)?.[0],
+                  announcement:
+                    details.links?.announcement_url?.filter(Boolean)?.[0]
+                },
+                contracts,
+                preferredContract,
+                requestedChainId: chainId,
+                message: messageParts.join(" ")
+              });
+            } catch (error) {
+              console.error("[TOOL:lookupTokenProfile] Error:", error);
+              return toolError({
+                success: false,
+                userMessage:
+                  "I ran into an issue fetching CoinGecko data. Could you try again in a moment?",
+                error:
+                  error instanceof Error ? error.message : "Unknown error occurred"
+              });
             }
           }
         }),
         getTokenInfo: tool({
           description:
-            "Get information about a specific token including its address and decimals. Supports tokens on Arbitrum and BNB Chain.",
+            "Get information about a specific token including its address and decimals. Supports tokens on Ethereum, Arbitrum, BNB Chain, Polygon, and Base.",
           inputSchema: z.object({
             symbol: z
               .string()
@@ -532,27 +796,32 @@ export async function POST(req: Request) {
             chainId: z
               .number()
               .optional()
-              .describe("Chain ID: 42161=Arbitrum, 56=BNB (default: 42161)")
+              .describe(
+                "Chain ID: 1=Ethereum, 56=BNB, 137=Polygon, 8453=Base, 42161=Arbitrum (default: 42161)"
+              )
           }),
           execute: async ({ symbol, chainId = 42161 }) => {
             const normalized = normalizeTokenSymbol(symbol, chainId);
             const token = await getTokenBySymbol(normalized, chainId);
+            const chainName = getChainName(chainId);
 
             if (!token) {
-              return {
+              return toolError({
                 success: false,
+                userMessage: `I couldn't find ${symbol} on ${chainName}. Could you double-check the token symbol or share the contract address?`,
                 error: `Token ${symbol} not found on chain ${chainId}. The token may not be available or the symbol may be incorrect.`
-              };
+              });
             }
 
-            return {
+            return toolSuccess({
               success: true,
               symbol: token.symbol,
               name: token.name,
               address: token.address,
               decimals: token.decimals,
-              chainId: token.chainId
-            };
+              chainId: token.chainId,
+              message: `${token.name} (${token.symbol}) is available on ${chainName}. Contract: ${token.address}, decimals: ${token.decimals}.`
+            });
           }
         }),
         getTokenUSDPrice: tool({
@@ -567,7 +836,7 @@ export async function POST(req: Request) {
             chainId: z
               .number()
               .describe(
-                "Chain ID - REQUIRED, must be explicitly provided by user. 42161=Arbitrum, 56=BNB. NO DEFAULT - always ask if not specified"
+                "Chain ID - REQUIRED, must be explicitly provided by user. 1=Ethereum, 56=BNB, 137=Polygon, 8453=Base, 42161=Arbitrum. NO DEFAULT - always ask if not specified"
               )
           }),
           execute: async ({ token, chainId }) => {
@@ -578,17 +847,18 @@ export async function POST(req: Request) {
               const result = await getTokenUSDPrice(normalized, chainId);
 
               if (!result.success) {
-                return {
+                return toolError({
                   success: false,
-                  // Return user-friendly message if available, otherwise use technical error
-                  userMessage: result.userMessage,
+                  userMessage:
+                    result.userMessage ||
+                    `I'm having trouble finding a USD price for ${normalized} on ${chainName}. Want to try another token or chain?`,
                   error: result.error || "Failed to get USD price"
-                };
+                });
               }
 
               const displayToken = result.symbol || normalized;
 
-              return {
+              return toolSuccess({
                 success: true,
                 chain: chainName,
                 chainId,
@@ -597,9 +867,9 @@ export async function POST(req: Request) {
                 priceNumber: result.priceNumber,
                 tokenAddress: result.tokenAddress,
                 message: `${displayToken} is currently $${result.price} USD on ${chainName}`
-              };
+              });
             } catch (error) {
-              return {
+              return toolError({
                 success: false,
                 userMessage:
                   "Having trouble getting the price right now. Want to try again?",
@@ -607,7 +877,7 @@ export async function POST(req: Request) {
                   error instanceof Error
                     ? error.message
                     : "Failed to get USD price"
-              };
+              });
             }
           }
         }),
@@ -618,7 +888,7 @@ export async function POST(req: Request) {
             chainId: z
               .number()
               .describe(
-                "Chain ID - REQUIRED. 42161=Arbitrum, 56=BNB. Ask user if not specified."
+                "Chain ID - REQUIRED. 1=Ethereum, 56=BNB, 137=Polygon, 8453=Base, 42161=Arbitrum. Ask user if not specified."
               ),
             minUsdValue: z
               .number()
@@ -642,21 +912,28 @@ export async function POST(req: Request) {
             });
 
             if (!walletAddress) {
-              return {
+              return toolError({
                 success: false,
                 userMessage:
                   "I don't have access to your wallet address. Please refresh the page and try again.",
                 error: "Wallet address not provided in request headers"
-              };
+              });
             }
 
             try {
               const chainName = getChainName(chainId);
 
-              // Create public client for the chain
-              const chain = chainId === 42161 ? arbitrum : bsc;
+              const viemChain = getViemChain(chainId);
+              if (!viemChain) {
+                return toolError({
+                  success: false,
+                  userMessage: `I don't currently support wallet balance lookups on chain ${chainId}.`,
+                  error: `Unsupported chain: ${chainId}`
+                });
+              }
+
               const publicClient = createPublicClient({
-                chain,
+                chain: viemChain,
                 transport: http()
               });
 
@@ -680,13 +957,13 @@ export async function POST(req: Request) {
               );
 
               if (balances.length === 0) {
-                return {
+                return toolError({
                   success: false,
                   userMessage: `No tokens found in your wallet on ${chainName}${
                     minUsdValue ? ` with value >= $${minUsdValue}` : ""
                   }.`,
                   error: "No balances found"
-                };
+                });
               }
 
               // Calculate total portfolio value
@@ -702,7 +979,7 @@ export async function POST(req: Request) {
                 formatted: formatTokenBalance(b)
               }));
 
-              return {
+              return toolSuccess({
                 success: true,
                 chain: chainName,
                 chainId,
@@ -712,15 +989,15 @@ export async function POST(req: Request) {
                 message: `Found ${balances.length} tokens${
                   minUsdValue ? ` worth $${minUsdValue}+ each` : ""
                 }. Total portfolio value: $${totalValue.toFixed(2)}`
-              };
+              });
             } catch (error) {
               console.error("[TOOL:getWalletBalances] Error:", error);
-              return {
+              return toolError({
                 success: false,
                 userMessage:
                   "Having trouble fetching your balances. Want to try again?",
                 error: error instanceof Error ? error.message : "Unknown error"
-              };
+              });
             }
           }
         }),
@@ -736,7 +1013,7 @@ export async function POST(req: Request) {
             chainId: z
               .number()
               .describe(
-                "Chain ID - REQUIRED. 42161=Arbitrum, 56=BNB. Ask user if not specified."
+                "Chain ID - REQUIRED. 1=Ethereum, 56=BNB, 137=Polygon, 8453=Base, 42161=Arbitrum. Ask user if not specified."
               )
           }),
           execute: async ({ tokens, chainId }) => {
@@ -750,21 +1027,28 @@ export async function POST(req: Request) {
             );
 
             if (!walletAddress) {
-              return {
+              return toolError({
                 success: false,
                 userMessage:
                   "I don't have access to your wallet address. Please refresh the page and try again.",
                 error: "Wallet address not provided in request headers"
-              };
+              });
             }
 
             try {
               const chainName = getChainName(chainId);
 
-              // Create public client for the chain
-              const chain = chainId === 42161 ? arbitrum : bsc;
+              const viemChain = getViemChain(chainId);
+              if (!viemChain) {
+                return toolError({
+                  success: false,
+                  userMessage: `I don't currently support balance lookups on chain ${chainId}.`,
+                  error: `Unsupported chain: ${chainId}`
+                });
+              }
+
               const publicClient = createPublicClient({
-                chain,
+                chain: viemChain,
                 transport: http()
               });
 
@@ -797,11 +1081,11 @@ export async function POST(req: Request) {
 
               if (validTokens.length === 0) {
                 const tokenList = tokens.join(", ");
-                return {
+                return toolError({
                   success: false,
                   userMessage: `I couldn't find ${tokenList} on ${chainName}. Could you double-check the token symbol? If you have the token contract address, I can look it up directly for you. Otherwise, try a different token like WETH, USDC, or USDT.`,
                   error: "Tokens not found"
-                };
+                });
               }
 
               // If some tokens were found but not all, let the user know
@@ -855,7 +1139,7 @@ export async function POST(req: Request) {
                     ? `, which is equivalent to $${bal.usdValue.toFixed(2)} USD`
                     : "";
 
-                return {
+                return toolSuccess({
                   success: true,
                   chain: chainName,
                   chainId,
@@ -874,10 +1158,10 @@ export async function POST(req: Request) {
                     availableAmount: bal.balance,
                     token: bal.symbol
                   }
-                };
+                });
               }
 
-              return {
+              return toolSuccess({
                 success: true,
                 chain: chainName,
                 chainId,
@@ -887,15 +1171,15 @@ export async function POST(req: Request) {
                   missingTokens.length > 0
                     ? `Could not find: ${missingTokens.join(", ")}`
                     : undefined
-              };
+              });
             } catch (error) {
               console.error("[TOOL:getSpecificBalances] Error:", error);
-              return {
+              return toolError({
                 success: false,
                 userMessage:
                   "Having trouble fetching balances. Want to try again?",
                 error: error instanceof Error ? error.message : "Unknown error"
-              };
+              });
             }
           }
         }),
@@ -911,7 +1195,9 @@ export async function POST(req: Request) {
               .describe("The token to swap TO (e.g., ARB, USDC)"),
             chainId: z
               .number()
-              .describe("Chain ID - REQUIRED. 42161=Arbitrum, 56=BNB")
+              .describe(
+                "Chain ID - REQUIRED. 1=Ethereum, 56=BNB, 137=Polygon, 8453=Base, 42161=Arbitrum"
+              )
           }),
           execute: async ({ fromToken, toToken, chainId }) => {
             console.log(
@@ -925,11 +1211,11 @@ export async function POST(req: Request) {
             );
 
             if (!walletAddress) {
-              return {
+              return toolError({
                 success: false,
                 userMessage: "Please connect your wallet first.",
                 error: "Wallet address not provided"
-              };
+              });
             }
 
             try {
@@ -945,24 +1231,24 @@ export async function POST(req: Request) {
               );
 
               if (!fromTokenInfo) {
-                return {
+                return toolError({
                   success: false,
                   userMessage: `I couldn't find ${fromToken} on ${chainName}. Could you double-check the token symbol?`,
                   error: `Token not found: ${fromToken}`
-                };
+                });
               }
 
               const toTokenInfo = await getTokenBySymbol(normalizedTo, chainId);
               if (!toTokenInfo) {
-                return {
+                return toolError({
                   success: false,
                   userMessage: `I couldn't find ${toToken} on ${chainName}. Could you double-check the token symbol?`,
                   error: `Token not found: ${toToken}`
-                };
+                });
               }
 
               // Return token info - client will fetch balance and quote
-              return {
+              return toolSuccess({
                 success: true,
                 chain: chainName,
                 chainId,
@@ -975,17 +1261,17 @@ export async function POST(req: Request) {
                 needsClientBalanceFetch: true, // Tells client to fetch balance first
                 needsClientQuote: true, // Then fetch quote with that balance
                 message: `Checking your ${normalizedFrom} balance on ${chainName}...`
-              };
+              });
             } catch (error) {
               console.error(
                 "[TOOL:getSwapQuoteForEntireBalance] Error:",
                 error
               );
-              return {
+              return toolError({
                 success: false,
                 userMessage: "Something went wrong. Want to try again?",
                 error: error instanceof Error ? error.message : "Unknown error"
-              };
+              });
             }
           }
         })

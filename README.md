@@ -1,14 +1,14 @@
-# Uniswap Chat Trader
+# DexLuthor
 
-A modern, AI-powered interface for trading on Uniswap using natural language. Built with Next.js 15, Vercel AI SDK, and Uniswap SDK.
+A modern, AI-powered interface for trading through CoW Protocol using natural language. Built with Next.js 15, Vercel AI SDK, and Moralis data services.
 
 ## Features
 
 - **Natural Language Trading**: Simply describe what you want to trade in plain English
 - **AI-Powered Assistant**: GPT-4 powered chatbot understands trade requests and provides quotes
-- **Real-time Quotes**: Get instant price quotes from Uniswap before executing trades
+- **Real-time Quotes**: Get instant intent-based quotes from CoW Protocol before executing trades
 - **Wallet Integration**: Secure wallet connection using Wagmi and WalletConnect
-- **Direct Execution**: Trades execute directly through Uniswap smart contracts
+- **Direct Execution**: Trades execute directly through CoW Protocol batch auctions
 - **Multi-Token Support**: Trade popular tokens including WETH, USDC, USDT, DAI, WBTC, and UNI
 
 ## Tech Stack
@@ -16,7 +16,7 @@ A modern, AI-powered interface for trading on Uniswap using natural language. Bu
 - **Frontend**: Next.js 15 (App Router), React 19, TypeScript, Tailwind CSS
 - **AI**: Vercel AI SDK with OpenAI GPT-4
 - **Web3**: Wagmi, Viem, Ethers.js v6
-- **DeFi**: Uniswap SDK (v3-sdk, smart-order-router)
+- **DeFi**: CoW Protocol Trading SDK, Moralis API
 - **State Management**: TanStack React Query
 
 ## Prerequisites
@@ -27,6 +27,7 @@ A modern, AI-powered interface for trading on Uniswap using natural language. Bu
 - Ethereum RPC endpoint (Infura, Alchemy, or similar)
 - WalletConnect Project ID
 - Moralis Web3 API key
+- CoinGecko demo API key (get from https://www.coingecko.com/en/api)
 
 ## Getting Started
 
@@ -52,20 +53,21 @@ Edit `.env.local` with your configuration:
 # OpenAI API Key (get from https://platform.openai.com/api-keys)
 OPENAI_API_KEY=sk-...
 
-# Ethereum RPC URL (get from https://infura.io or https://alchemy.com)
-NEXT_PUBLIC_RPC_URL=https://mainnet.infura.io/v3/YOUR_PROJECT_ID
-
 # WalletConnect Project ID (get from https://cloud.walletconnect.com/)
 NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID=your_project_id
 
-# Chain ID (1 for Ethereum Mainnet, 11155111 for Sepolia testnet)
-NEXT_PUBLIC_CHAIN_ID=1
-
-# SushiSwap API Key (optional - get from https://sushi.com/portal)
-NEXT_PUBLIC_SUSHISWAP_API_KEY=your_sushiswap_api_key_here
+# Optional RPC overrides (defaults fall back to public RPCs)
+NEXT_PUBLIC_MAINNET_RPC_URL=https://mainnet.infura.io/v3/YOUR_PROJECT_ID
+NEXT_PUBLIC_BSC_RPC_URL=https://bsc-dataseed1.binance.org
+NEXT_PUBLIC_POLYGON_RPC_URL=https://polygon-rpc.com
+NEXT_PUBLIC_BASE_RPC_URL=https://mainnet.base.org
+NEXT_PUBLIC_ARBITRUM_RPC_URL=https://arbitrum-one.public.blastapi.io
 
 # Moralis Web3 API key (https://admin.moralis.io/)
 MORALIS_API_KEY=your_moralis_api_key_here
+
+# CoinGecko demo API key (https://www.coingecko.com/en/api)
+COINGECKO_DEMO_API_KEY=your_coingecko_demo_key_here
 ```
 
 ### 3. Run the Development Server
@@ -104,9 +106,13 @@ dexluthor/
 │   │   ├── WalletConnect.tsx       # Wallet connection button
 │   │   └── Providers.tsx           # Wagmi & React Query providers
 │   └── lib/
-│       ├── wagmi.ts                # Wagmi configuration
-│       ├── tokens.ts               # Token addresses & utilities
-│       └── uniswap.ts              # Uniswap trading functions
+│       ├── chains.ts               # Supported chain constants & helpers
+│       ├── coingecko.ts            # CoinGecko search & metadata helpers
+│       ├── cowswap-client.ts       # Client-side CoW Protocol SDK wrapper
+│       ├── prices.ts               # Moralis USD price lookups
+│       ├── tokens.ts               # Token registry with CoinGecko fallback
+│       ├── wallet-balances.ts      # Moralis wallet balance helpers
+│       └── wagmi.ts                # Wagmi configuration
 ├── .env.local                      # Environment variables (create this)
 ├── .env.example                    # Environment template
 └── package.json
@@ -118,15 +124,16 @@ dexluthor/
 
 - Handles natural language processing with GPT-4
 - Implements tool calling for:
-  - `getSwapQuote`: Fetches price quotes from Uniswap
-  - `executeSwap`: Prepares swap transaction data
+  - `getSwapQuote`: Resolves token metadata and performs liquidity pre-checks before the client fetches a CoW quote
+  - `createOrder`: Supplies the client with all parameters needed for Trading SDK order creation
   - `getTokenInfo`: Returns token details
+  - `getTokenUSDPrice`: Fetches USD pricing via Moralis
+  - `getWalletBalances` / `getSpecificBalances`: Summaries and token-specific balances via Moralis
 
-### Uniswap Integration (`src/lib/uniswap.ts`)
+### CoW Protocol Client (`src/lib/cowswap-client.ts`)
 
-- `getSwapQuote()`: Uses AlphaRouter to find optimal swap routes
-- `executeSwap()`: Executes token swaps via Uniswap V3 Router
-- `getTokenBalance()`: Queries ERC20 token balances
+- Wraps the CoW Protocol Trading SDK for browser-side quoting and order submission
+- Provides helpers to check allowances and perform approvals where necessary
 
 ### Chat UI (`src/components/Chat.tsx`)
 
@@ -138,25 +145,22 @@ dexluthor/
 ## Supported Networks
 
 - Ethereum Mainnet (Chain ID: 1)
-- Sepolia Testnet (Chain ID: 11155111)
-
-To switch networks, update `NEXT_PUBLIC_CHAIN_ID` in `.env.local` and add corresponding token addresses in `src/lib/tokens.ts`.
+- BNB Chain (Chain ID: 56)
+- Polygon PoS (Chain ID: 137)
+- Base (Chain ID: 8453)
+- Arbitrum One (Chain ID: 42161)
 
 ## Supported Tokens
 
-**Mainnet:**
+Token discovery is handled dynamically via curated token lists and CoinGecko fallbacks. Popular assets include:
 
-- WETH (Wrapped Ether)
-- USDC (USD Coin)
-- USDT (Tether USD)
-- DAI (Dai Stablecoin)
-- WBTC (Wrapped Bitcoin)
-- UNI (Uniswap)
+- **Ethereum**: WETH, USDC, USDT, DAI, WBTC
+- **BNB Chain**: WBNB, CAKE, BTCB, USDC, USDT
+- **Polygon**: WMATIC, WETH, USDC, USDT, DAI
+- **Base**: WETH, USDC, cbETH, DAI, USDT
+- **Arbitrum**: ARB, WETH, USDC, USDT, DAI
 
-**Sepolia:**
-
-- WETH (Wrapped Ether)
-- USDC (USD Coin)
+If a token symbol isn’t found, provide the contract address (0x…) and the assistant will resolve it through CoinGecko or on-chain lookups.
 
 ## Development
 
@@ -176,6 +180,12 @@ npm start
 
 ```bash
 npm run lint
+```
+
+### CoinGecko Token Lookup Smoke Test
+
+```bash
+COINGECKO_DEMO_API_KEY=your_key npm run test:lookup APEX arbitrum-one
 ```
 
 ## Important Notes
@@ -210,7 +220,8 @@ npm run lint
 
 - [Next.js Documentation](https://nextjs.org/docs)
 - [Vercel AI SDK](https://sdk.vercel.ai/docs)
-- [Uniswap V3 SDK](https://docs.uniswap.org/sdk/v3/overview)
+- [CoW Protocol Docs](https://docs.cow.fi/)
+- [Moralis Web3 APIs](https://moralis.io/web3-data-api/)
 - [Wagmi Documentation](https://wagmi.sh/)
 - [Viem Documentation](https://viem.sh/)
 

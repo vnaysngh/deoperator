@@ -2,6 +2,7 @@
  * Test script for CoW Protocol Trading SDK implementation
  * Run with: node test-cowswap-sdk.js
  */
+/* eslint-disable @typescript-eslint/no-require-imports */
 
 const { getCowSwapQuoteSDK, getQuoteForOrder } = require('./src/lib/cowswap-sdk.ts');
 

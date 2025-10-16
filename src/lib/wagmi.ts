@@ -1,6 +1,6 @@
 import { getDefaultConfig } from "@rainbow-me/rainbowkit";
-import { arbitrum, bsc } from "wagmi/chains";
 import { http } from "wagmi";
+import { arbitrum, base, bsc, mainnet, polygon } from "wagmi/chains";
 
 const projectId = process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID || "";
 
@@ -10,16 +10,68 @@ if (!projectId) {
   );
 }
 
+type ChainWithRpcUrls = {
+  rpcUrls: {
+    default: { http: readonly string[] }
+  }
+};
+
+function resolveRpcUrl(
+  envVar: string | undefined,
+  chain: ChainWithRpcUrls
+): string {
+  if (envVar && envVar.length > 0) {
+    return envVar;
+  }
+
+  const publicUrls =
+    (chain.rpcUrls as { public?: { http: readonly string[] } }).public?.http;
+  if (publicUrls && publicUrls.length > 0) {
+    return publicUrls[0];
+  }
+
+  const defaultUrls = chain.rpcUrls.default.http;
+  if (defaultUrls.length > 0) {
+    return defaultUrls[0];
+  }
+
+  throw new Error("No RPC URL available for the configured chain.");
+}
+
 export const config = getDefaultConfig({
   appName: "DexLuthor",
   projectId,
-  chains: [arbitrum, bsc],
+  chains: [mainnet, bsc, polygon, base, arbitrum],
   transports: {
-    [arbitrum.id]: http(
-      process.env.NEXT_PUBLIC_ARBITRUM_RPC_URL || "https://arbitrum-one.public.blastapi.io"
+    [mainnet.id]: http(
+      resolveRpcUrl(
+        process.env.NEXT_PUBLIC_MAINNET_RPC_URL,
+        mainnet
+      )
     ),
     [bsc.id]: http(
-      process.env.NEXT_PUBLIC_BSC_RPC_URL || "https://bsc-dataseed1.binance.org"
+      resolveRpcUrl(
+        process.env.NEXT_PUBLIC_BSC_RPC_URL,
+        bsc
+      )
+    ),
+    [polygon.id]: http(
+      resolveRpcUrl(
+        process.env.NEXT_PUBLIC_POLYGON_RPC_URL,
+        polygon
+      )
+    ),
+    [base.id]: http(
+      resolveRpcUrl(
+        process.env.NEXT_PUBLIC_BASE_RPC_URL,
+        base
+      )
+    ),
+    [arbitrum.id]: http(
+      resolveRpcUrl(
+        process.env.NEXT_PUBLIC_ARBITRUM_RPC_URL,
+        arbitrum
+      )
     )
   },
   ssr: true
