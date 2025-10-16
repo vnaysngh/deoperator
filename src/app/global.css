@@ -1,5 +1,22 @@
 @import "tailwindcss";
 
+/* JetBrains Mono Font */
+@font-face {
+  font-family: 'JetBrains Mono';
+  src: url('/fonts/JetBrainsMono/JetBrainsMono-VariableFont_wght.ttf') format('truetype');
+  font-weight: 100 800;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'JetBrains Mono';
+  src: url('/fonts/JetBrainsMono/JetBrainsMono-Italic-VariableFont_wght.ttf') format('truetype');
+  font-weight: 100 800;
+  font-style: italic;
+  font-display: swap;
+}
+
 /* Custom theme configuration for Tailwind v4 */
 @theme {
   /* Primary remapped to emerald for green highlights */
@@ -17,6 +34,10 @@
 
 /* Base styles */
 @layer base {
+  :root {
+    --font-mono: 'JetBrains Mono', monospace;
+  }
+
   body {
     @apply bg-black text-white;
     font-family: var(--font-mono);

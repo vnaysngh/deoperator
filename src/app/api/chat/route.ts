@@ -268,6 +268,7 @@ export async function POST(req: Request) {
 
       Be conversational, helpful, and ALWAYS prioritize accuracy over speed.`,
       tools: {
+        // Your existing custom tools
         getSwapQuote: tool({
           description:
             "Get token information for a swap. Returns token addresses and decimals. The client-side SDK will fetch the actual quote. ONLY call this when you have confirmed: fromToken, toToken, amount, AND chainId with the user. Do NOT assume defaults. Only supports Arbitrum (42161) and BNB Chain (56).",

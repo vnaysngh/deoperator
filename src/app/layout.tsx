@@ -1,15 +1,7 @@
 import type { Metadata } from "next";
-import { JetBrains_Mono } from "next/font/google";
 import "./global.css";
 import "@rainbow-me/rainbowkit/styles.css";
 import { Providers } from "@/components/Providers";
-
-const jetbrains = JetBrains_Mono({
-  subsets: ["latin"],
-  weight: ["400", "500", "600", "700"],
-  variable: "--font-mono",
-  display: "swap"
-});
 
 export const metadata: Metadata = {
   title: "DexLuthor | AI-Powered Uniswap Trading",
@@ -24,7 +16,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body className={`${jetbrains.variable} antialiased`}>
+      <body className="antialiased">
         <Providers>{children}</Providers>
       </body>
     </html>
