@@ -126,9 +126,10 @@ The core API route handling natural language processing with GPT-4 Turbo and too
 **AI Tools Available:**
 - `getSwapQuote`: Fetches real-time quotes from CoW Protocol with fee estimates
 - `createSwapOrder`: Prepares CoW Protocol swap order (intent-based trading)
-- `getTokenPrice`: Returns USD price for any token via SushiSwap API
+- `getTokenUSDPrice`: Returns USD price for any token via Moralis API
 - `getWalletBalances`: Fetches all token balances with USD values for connected wallet
-- `getTokenInfo`: Returns token details from Uniswap token lists
+- `getSpecificBalances`: Fetch balances for specific tokens
+- `getSwapQuoteForEntireBalance`: Get swap quote for user's entire token balance
 
 **Features:**
 - Wallet address detection from request headers
@@ -158,9 +159,10 @@ Client-side CoW Protocol Trading SDK implementation:
 ### Wallet Balances (`src/lib/wallet-balances.ts`)
 
 - `getTokenBalance()`: Fetch balance for specific token
-- `getMultipleTokenBalances()`: Batch fetch balances with USD values
+- `getAllTokenBalances()`: Fetch all token balances with USD values
+- `getSpecificTokenBalances()`: Batch fetch specific token balances
 - Supports native tokens and ERC20 tokens
-- Integration with SushiSwap API for USD pricing
+- Integration with Moralis API for USD pricing
 
 ### Chat UI (`src/components/Chat.tsx`)
 
@@ -377,7 +379,6 @@ See `AGENTS.md` and `CLAUDE.md` for detailed development guidelines. Key points:
 - `AGENTS.md` - Repository structure and contribution guidelines
 - `TOOL_CONVENTION.md` - Critical rules for AI tool development
 - `COWSWAP_INTEGRATION.md` - CoW Protocol integration details
-- `SUSHISWAP_INTEGRATION.md` - SushiSwap API integration guide
 - `TESTING_CHECKLIST.md` - Testing guidelines and checklist
 
 ### External Resources
@@ -388,7 +389,7 @@ See `AGENTS.md` and `CLAUDE.md` for detailed development guidelines. Key points:
 - [RainbowKit](https://www.rainbowkit.com/docs/introduction)
 - [Wagmi Documentation](https://wagmi.sh/)
 - [Viem Documentation](https://viem.sh/)
-- [SushiSwap API](https://docs.sushi.com/)
+- [Moralis API](https://docs.moralis.io/)
 - [Uniswap Token Lists](https://tokenlists.org/)
 
 ## Architecture Highlights

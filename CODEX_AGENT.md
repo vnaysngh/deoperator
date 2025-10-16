@@ -33,8 +33,7 @@ This is a quick-reference for future Codex-style agents dropping into **Unipilot
 ## Data & Integrations
 - **Token discovery** caches results for an hour; keep cache invalidation in mind when editing token-metadata flows.
 - **Moralis** (requires `MORALIS_API_KEY`) backs both wallet portfolio lookups and USD pricing.
-- **Sushi API** still handles swap quotes when the chat flow needs Sushi as a fallback path; respect the chain whitelist before hitting the endpoints.
-- **Uniswap fallback** (`swapClient.ts`) still exists for legacy direct router interactions; CoW is the primary path exposed in chat.
+- **CoW Protocol** is the only swap execution path; all swaps go through CoW's intent-based batch auction system.
 
 ## Dev Workflow Essentials
 - Run `npm run dev` for Turbopack, `npm run lint` before shipping, and `node test-cowswap-sdk.js` when touching CoW logic.
