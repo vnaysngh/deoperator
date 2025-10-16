@@ -1,7 +1,7 @@
 # Repository Guidelines
 
 ## Project Structure & Module Organization
-The Next.js 15 app router lives under `src/app`, with `page.tsx` hosting the chat UI and `app/api/chat/route.ts` handling AI requests. Shared UI pieces (chat window, wallet button) sit in `src/components`, while protocol and token logic is grouped in `src/lib` (for example `cowswap-client.ts`, `tokens.ts`, `uniswap.ts`). Static assets and icons belong in `public`, and Tailwind globals are wired through `src/app/global.css`. Keep self-contained feature work within these folders and favour colocating helper modules beside the feature they serve.
+The Next.js 15 app router lives under `src/app`, with `page.tsx` hosting the chat UI and `app/api/chat/route.ts` handling AI requests. Shared UI pieces (chat window, wallet button) sit in `src/components`, while protocol and token logic is grouped in `src/lib` (for example `cowswap-client.ts`, `tokens.ts`, `token-pricing.ts`). Static assets and icons belong in `public`, and Tailwind globals are wired through `src/app/global.css`. Keep self-contained feature work within these folders and favour colocating helper modules beside the feature they serve.
 
 ## Build, Test, and Development Commands
 - `npm run dev` starts the Turbopack dev server on port 3000 with hot reload.
@@ -10,7 +10,7 @@ The Next.js 15 app router lives under `src/app`, with `page.tsx` hosting the cha
 - `node test-cowswap-sdk.js` exercises the CoW Protocol quote helpers without booting the UI.
 
 ## Coding Style & Naming Conventions
-Typescript is the default; prefer type-safe imports from `@/lib` and explicit return types on exported functions. Follow the existing two-space indentation, double quotes, and semicolon usage seen across `src/app/page.tsx`. Components and hooks use PascalCase (`Chat`, `WalletConnect`), utility modules in `src/lib` use camelCase filenames (`swapClient.ts`). Tailwind classes should group structural utilities before color tokens for readability. Rely on `eslint.config.mjs` (Next + TypeScript rules) before finalising changes; add clarifying comments only around complex on-chain workflows.
+Typescript is the default; prefer type-safe imports from `@/lib` and explicit return types on exported functions. Follow the existing two-space indentation, double quotes, and semicolon usage seen across `src/app/page.tsx`. Components and hooks use PascalCase (`Chat`, `WalletConnect`), utility modules in `src/lib` use camelCase filenames (like `token-pricing.ts`). Tailwind classes should group structural utilities before color tokens for readability. Rely on `eslint.config.mjs` (Next + TypeScript rules) before finalising changes; add clarifying comments only around complex on-chain workflows.
 
 ## Testing Guidelines
 UI changes must be lint-clean and, when they affect protocol logic, validated through `node test-cowswap-sdk.js` or targeted wallet simulations. There is no automated coverage target yet, so document the manual scenarios you exercised in your PR description (e.g., “Swap 1 WETH→USDC on Sepolia”). When adding new modules, include lightweight unit helpers in `src/lib/__tests__` or colocated files and wire them into a future `npm test` script if feasible.

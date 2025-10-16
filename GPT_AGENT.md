@@ -7,7 +7,7 @@ This guide orients OpenAI-based coding agents (ChatGPT, GPT-4.1, o3, etc.) when 
 - Turbopack drives both `npm run dev` and `npm run build`
 - AI chat endpoint: `src/app/api/chat/route.ts`
 - Primary UI surface: `src/app/page.tsx` and `src/components/Chat.tsx`
-- Protocol helpers live under `src/lib` (Uniswap, CoW, Sushi integrations)
+- Protocol helpers live under `src/lib` (CoW Protocol, token pricing via Moralis)
 
 ## Daily Driver Commands
 - `npm run dev` → start the Turbopack dev server on http://localhost:3000

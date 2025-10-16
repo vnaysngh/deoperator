@@ -19,7 +19,7 @@ A modern, AI-powered multi-chain trading interface using natural language. Built
 - **Bundler**: Turbopack for fast development and production builds
 - **AI**: Vercel AI SDK with OpenAI GPT-4 Turbo
 - **Web3**: Wagmi 2.x, Viem 2.x, RainbowKit
-- **DeFi**: CoW Protocol SDK (Trading, Order Book, Viem Adapter), SushiSwap API, Uniswap SDK Core
+- **DeFi**: CoW Protocol SDK (Trading, Order Book, Viem Adapter), Moralis API for token pricing, Uniswap SDK Core (for token types)
 - **State Management**: TanStack React Query
 
 ## Prerequisites
@@ -28,7 +28,7 @@ A modern, AI-powered multi-chain trading interface using natural language. Built
 - A Web3 wallet (MetaMask, WalletConnect-compatible wallets, Coinbase Wallet, etc.)
 - OpenAI API key (get from https://platform.openai.com/api-keys)
 - WalletConnect Project ID (get from https://cloud.walletconnect.com/)
-- Optional: SushiSwap API key (for enhanced token pricing - get from https://sushi.com/portal)
+- Optional: Moralis API key (for token USD pricing - get from https://moralis.io/)
 - Optional: Custom RPC endpoints for Arbitrum and BNB Chain (default public RPCs are provided)
 
 ## Getting Started
@@ -56,8 +56,8 @@ NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID=your_project_id
 NEXT_PUBLIC_ARBITRUM_RPC_URL=https://arb1.arbitrum.io/rpc
 NEXT_PUBLIC_BSC_RPC_URL=https://bsc-dataseed1.binance.org
 
-# Optional: SushiSwap API Key for enhanced token pricing (get from https://sushi.com/portal)
-NEXT_PUBLIC_SUSHISWAP_API_KEY=your_sushiswap_api_key_here
+# Optional: Moralis API Key for token USD pricing (get from https://moralis.io/)
+MORALIS_API_KEY=your_moralis_api_key_here
 ```
 
 **Note**: The application defaults to public RPC endpoints for Arbitrum and BNB Chain. You can provide custom RPC URLs for better performance and rate limits.
@@ -91,10 +91,8 @@ dexluthor.ai/
 ├── src/
 │   ├── app/
 │   │   ├── api/
-│   │   │   ├── chat/
-│   │   │   │   └── route.ts        # AI chat API with tool calling
-│   │   │   └── swap/
-│   │   │       └── route.ts        # Legacy swap API endpoint
+│   │   │   └── chat/
+│   │   │       └── route.ts        # AI chat API with tool calling
 │   │   ├── layout.tsx              # Root layout with providers
 │   │   ├── page.tsx                # Main chat interface
 │   │   └── global.css              # Global Tailwind styles (imported in layout)
@@ -109,9 +107,7 @@ dexluthor.ai/
 │   │   ├── tokens.ts               # Token list fetching and caching
 │   │   ├── tokenlist.ts            # Token list interfaces
 │   │   ├── cowswap-client.ts       # CoW Protocol Trading SDK integration
-│   │   ├── sushiswap.ts            # SushiSwap API for token pricing
-│   │   ├── uniswap.ts              # Legacy Uniswap SDK functions
-│   │   ├── swapClient.ts           # Legacy client-side swap execution
+│   │   ├── token-pricing.ts        # Moralis API for token USD pricing
 │   │   └── wallet-balances.ts      # Token balance fetching utilities
 │   └── __tests__/                  # Test files
 ├── scripts/
@@ -130,9 +126,10 @@ The core API route handling natural language processing with GPT-4 Turbo and too
 **AI Tools Available:**
 - `getSwapQuote`: Fetches real-time quotes from CoW Protocol with fee estimates
 - `createSwapOrder`: Prepares CoW Protocol swap order (intent-based trading)
-- `getTokenPrice`: Returns USD price for any token via SushiSwap API
+- `getTokenUSDPrice`: Returns USD price for any token via Moralis API
 - `getWalletBalances`: Fetches all token balances with USD values for connected wallet
-- `getTokenInfo`: Returns token details from Uniswap token lists
+- `getSpecificBalances`: Fetch balances for specific tokens
+- `getSwapQuoteForEntireBalance`: Get swap quote for user's entire token balance
 
 **Features:**
 - Wallet address detection from request headers
@@ -162,9 +159,10 @@ Client-side CoW Protocol Trading SDK implementation:
 ### Wallet Balances (`src/lib/wallet-balances.ts`)
 
 - `getTokenBalance()`: Fetch balance for specific token
-- `getMultipleTokenBalances()`: Batch fetch balances with USD values
+- `getAllTokenBalances()`: Fetch all token balances with USD values
+- `getSpecificTokenBalances()`: Batch fetch specific token balances
 - Supports native tokens and ERC20 tokens
-- Integration with SushiSwap API for USD pricing
+- Integration with Moralis API for USD pricing
 
 ### Chat UI (`src/components/Chat.tsx`)
 
@@ -381,7 +379,6 @@ See `AGENTS.md` and `CLAUDE.md` for detailed development guidelines. Key points:
 - `AGENTS.md` - Repository structure and contribution guidelines
 - `TOOL_CONVENTION.md` - Critical rules for AI tool development
 - `COWSWAP_INTEGRATION.md` - CoW Protocol integration details
-- `SUSHISWAP_INTEGRATION.md` - SushiSwap API integration guide
 - `TESTING_CHECKLIST.md` - Testing guidelines and checklist
 
 ### External Resources
@@ -392,7 +389,7 @@ See `AGENTS.md` and `CLAUDE.md` for detailed development guidelines. Key points:
 - [RainbowKit](https://www.rainbowkit.com/docs/introduction)
 - [Wagmi Documentation](https://wagmi.sh/)
 - [Viem Documentation](https://viem.sh/)
-- [SushiSwap API](https://docs.sushi.com/)
+- [Moralis API](https://docs.moralis.io/)
 - [Uniswap Token Lists](https://tokenlists.org/)
 
 ## Architecture Highlights

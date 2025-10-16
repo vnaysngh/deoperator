@@ -319,7 +319,7 @@ Body: {
 
 ## Advantages of Intent-Based Swaps
 
-### Traditional AMM Swaps (SushiSwap, Uniswap)
+### Traditional AMM Swaps
 - Execute immediately at current pool price
 - Subject to MEV (frontrunning, sandwich attacks)
 - Gas costs paid by user
