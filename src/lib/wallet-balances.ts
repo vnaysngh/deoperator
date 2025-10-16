@@ -291,10 +291,18 @@ export async function getSpecificTokenBalances(
         if (balanceRaw > BigInt(0)) {
           try {
             const priceResult = await getTokenUSDPrice(token.symbol || '', token.chainId)
-            if (priceResult.success && priceResult.price) {
-              const usdPrice = parseFloat(priceResult.price)
-              tokenBalance.usdPrice = usdPrice
-              tokenBalance.usdValue = parseFloat(balance) * usdPrice
+            if (priceResult.success) {
+              const { priceNumber, price } = priceResult
+              let usdPrice: number | undefined = priceNumber
+
+              if (usdPrice === undefined && price) {
+                usdPrice = parseFloat(price)
+              }
+
+              if (usdPrice !== undefined && !Number.isNaN(usdPrice)) {
+                tokenBalance.usdPrice = usdPrice
+                tokenBalance.usdValue = parseFloat(balance) * usdPrice
+              }
             }
           } catch {
             // Price fetch failed, continue without USD value

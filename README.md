@@ -26,6 +26,7 @@ A modern, AI-powered interface for trading on Uniswap using natural language. Bu
 - OpenAI API key
 - Ethereum RPC endpoint (Infura, Alchemy, or similar)
 - WalletConnect Project ID
+- Moralis Web3 API key
 
 ## Getting Started
 
@@ -59,6 +60,12 @@ NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID=your_project_id
 
 # Chain ID (1 for Ethereum Mainnet, 11155111 for Sepolia testnet)
 NEXT_PUBLIC_CHAIN_ID=1
+
+# SushiSwap API Key (optional - get from https://sushi.com/portal)
+NEXT_PUBLIC_SUSHISWAP_API_KEY=your_sushiswap_api_key_here
+
+# Moralis Web3 API key (https://admin.moralis.io/)
+MORALIS_API_KEY=your_moralis_api_key_here
 ```
 
 ### 3. Run the Development Server

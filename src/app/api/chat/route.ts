@@ -585,13 +585,17 @@ export async function POST(req: Request) {
                 };
               }
 
+              const displayToken = result.symbol || normalized;
+
               return {
                 success: true,
                 chain: chainName,
                 chainId,
-                token: normalized,
+                token: displayToken,
                 price: result.price,
-                message: `${normalized} is currently $${result.price} USD on ${chainName}`
+                priceNumber: result.priceNumber,
+                tokenAddress: result.tokenAddress,
+                message: `${displayToken} is currently $${result.price} USD on ${chainName}`
               };
             } catch (error) {
               return {
