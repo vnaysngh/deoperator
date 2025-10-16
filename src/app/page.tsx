@@ -2,6 +2,8 @@
 
 import { Chat } from "@/components/Chat";
 import { WalletConnect } from "@/components/WalletConnect";
+import { AppSidebar } from "@/components/app-sidebar";
+import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar";
 import { useState } from "react";
 
 export default function Home() {
@@ -9,172 +11,72 @@ export default function Home() {
   const [status] = useState("");
 
   return (
-    <div className="min-h-screen">
-      {/* Header */}
-      <header className="border-b border-white/5">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              {/* <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-primary-600 to-primary-700 flex items-center justify-center shadow-glow">
-                <span className="text-white font-bold text-lg">U</span>
-              </div> */}
-              <div className="text-xl font-bold gradient-text">DexLuthor</div>
-            </div>
-            <WalletConnect />
-          </div>
-        </div>
-      </header>
-
-      {/* Main Content */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Hero Section */}
-        <div className="text-center mb-12 mt-8">
-          <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold mb-4">
-            <span className="gradient-text">
-              Trade tokens using natural language
-            </span>
-          </h1>
-          {/* <p className="text-gray-400 text-base sm:text-lg max-w-2xl mx-auto">
-            Trade tokens using natural language.
-          </p> */}
-        </div>
-
-        {/* Status Messages */}
-        {status && (
-          <div className="max-w-3xl mx-auto mb-6">
-            <div
-              className={`glass-strong rounded-xl p-4 border ${
-                status.includes("failed") || status.includes("error")
-                  ? "border-red-500/30 bg-red-500/10"
-                  : status.includes("successful")
-                  ? "border-emerald-500/30 bg-emerald-500/10"
-                  : "border-primary-500/30 bg-primary-500/10"
-              }`}
-            >
-              <p
-                className={`text-sm ${
-                  status.includes("failed") || status.includes("error")
-                    ? "text-red-400"
-                    : status.includes("successful")
-                    ? "text-emerald-400"
-                    : "text-primary-400"
-                }`}
-              >
-                {status}
-              </p>
-            </div>
-          </div>
-        )}
-
-        {/* Loading Overlay */}
-        {isExecuting && (
-          <div className="max-w-3xl mx-auto mb-6">
-            <div className="glass-strong rounded-xl p-4 border border-primary-500/30">
-              <div className="flex items-center gap-3">
-                <div className="w-5 h-5 border-2 border-primary-500 border-t-transparent rounded-full animate-spin"></div>
-                <span className="text-sm text-gray-300">
-                  Processing transaction...
-                </span>
+    <SidebarProvider>
+      <AppSidebar />
+      <SidebarInset>
+        <div className="min-h-screen">
+          <header className="border-b border-white/5">
+            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+              <div className="flex items-center justify-end">
+                <WalletConnect />
               </div>
             </div>
-          </div>
-        )}
+          </header>
 
-        {/* Chat Interface */}
-        <div className="max-w-4xl mx-auto mb-12">
-          <Chat />
+          <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+            <div className="text-center mb-12 mt-8">
+              <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold mb-4">
+                <span className="gradient-text">
+                  Trade tokens using natural language
+                </span>
+              </h1>
+            </div>
+
+            {status && (
+              <div className="max-w-3xl mx-auto mb-6">
+                <div
+                  className={`glass-strong rounded-xl p-4 border ${
+                    status.includes("failed") || status.includes("error")
+                      ? "border-red-500/30 bg-red-500/10"
+                      : status.includes("successful")
+                      ? "border-emerald-500/30 bg-emerald-500/10"
+                      : "border-primary-500/30 bg-primary-500/10"
+                  }`}
+                >
+                  <p
+                    className={`text-sm ${
+                      status.includes("failed") || status.includes("error")
+                        ? "text-red-400"
+                        : status.includes("successful")
+                        ? "text-emerald-400"
+                        : "text-primary-400"
+                    }`}
+                  >
+                    {status}
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {isExecuting && (
+              <div className="max-w-3xl mx-auto mb-6">
+                <div className="glass-strong rounded-xl p-4 border border-primary-500/30">
+                  <div className="flex items-center gap-3">
+                    <div className="w-5 h-5 border-2 border-primary-500 border-t-transparent rounded-full animate-spin"></div>
+                    <span className="text-sm text-gray-300">
+                      Processing transaction...
+                    </span>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <div className="max-w-4xl mx-auto mb-12">
+              <Chat />
+            </div>
+          </main>
         </div>
-
-        {/* Features Grid */}
-        {/*    <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-5xl mx-auto mb-12">
-          <div className="glass rounded-2xl p-6 hover:bg-white/5 transition-colors">
-            <div className="w-12 h-12 rounded-xl bg-primary-600/20 flex items-center justify-center mb-4">
-              <svg
-                className="w-6 h-6 text-primary-400"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"
-                />
-              </svg>
-            </div>
-            <h3 className="text-lg font-semibold text-white mb-2">
-              Natural Language
-            </h3>
-            <p className="text-sm text-gray-400">
-              Simply describe what you want to trade. No forms, no complexity.
-            </p>
-          </div>
-
-          <div className="glass rounded-2xl p-6 hover:bg-white/5 transition-colors">
-            <div className="w-12 h-12 rounded-xl bg-primary-600/20 flex items-center justify-center mb-4">
-              <svg
-                className="w-6 h-6 text-primary-400"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M13 10V3L4 14h7v7l9-11h-7z"
-                />
-              </svg>
-            </div>
-            <h3 className="text-lg font-semibold text-white mb-2">
-              Real-time Quotes
-            </h3>
-            <p className="text-sm text-gray-400">
-              Get instant CoW Protocol quotes before executing.
-            </p>
-          </div>
-
-          <div className="glass rounded-2xl p-6 hover:bg-white/5 transition-colors">
-            <div className="w-12 h-12 rounded-xl bg-primary-600/20 flex items-center justify-center mb-4">
-              <svg
-                className="w-6 h-6 text-primary-400"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"
-                />
-              </svg>
-            </div>
-            <h3 className="text-lg font-semibold text-white mb-2">
-              Secure Execution
-            </h3>
-            <p className="text-sm text-gray-400">
-              All trades execute through your connected wallet securely.
-            </p>
-          </div>
-        </div> */}
-
-        {/* Supported Tokens */}
-        {/*  <div className="text-center">
-          <p className="text-sm text-gray-500 mb-3">Supported Tokens</p>
-          <div className="flex flex-wrap justify-center gap-2">
-            {['WETH', 'USDC', 'USDT', 'DAI', 'WBTC', 'UNI'].map((token) => (
-              <span
-                key={token}
-                className="px-4 py-2 glass rounded-lg text-xs font-medium text-gray-300 hover:text-white hover:border-primary-500/30 transition-colors"
-              >
-                {token}
-              </span>
-            ))}
-          </div>
-        </div> */}
-      </main>
-    </div>
+      </SidebarInset>
+    </SidebarProvider>
   );
 }
