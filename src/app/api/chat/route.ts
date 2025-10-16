@@ -6,7 +6,7 @@ import {
   normalizeTokenSymbol,
   formatTokenAmount
 } from "@/lib/tokens";
-import { getTokenUSDPrice } from "@/lib/sushiswap";
+import { getTokenUSDPrice } from "@/lib/token-pricing";
 import { getChainName } from "@/lib/chains";
 import { createPublicClient, http, type Address } from "viem";
 import { arbitrum, bsc } from "viem/chains";

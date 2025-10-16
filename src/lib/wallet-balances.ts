@@ -1,5 +1,5 @@
 import { Token } from '@uniswap/sdk-core'
-import { getTokenUSDPrice } from './sushiswap'
+import { getTokenUSDPrice } from './token-pricing'
 import { type PublicClient, type Address, erc20Abi, formatUnits } from 'viem'
 
 export interface TokenBalance {

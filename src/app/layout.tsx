@@ -12,9 +12,9 @@ const jetbrains = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "DexLuthor | AI-Powered Uniswap Trading",
+  title: "DexLuthor | AI-Powered Multi-Chain Trading",
   description:
-    "Trade tokens on Uniswap using natural language with AI assistance"
+    "Trade tokens on Arbitrum and BNB Chain using natural language with AI assistance powered by CoW Protocol"
 };
 
 export default function RootLayout({
