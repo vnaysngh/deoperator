@@ -9,6 +9,9 @@ export async function GET(req: NextRequest) {
     const searchParams = req.nextUrl.searchParams;
     const walletAddress = searchParams.get("address");
     const chain = searchParams.get("chain") || "eth";
+    const order = searchParams.get("order") || "DESC";
+    const limit = searchParams.get("limit") || "25";
+    const cursor = searchParams.get("cursor");
 
     if (!walletAddress) {
       return NextResponse.json(
@@ -17,9 +20,10 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    const url = `https://deep-index.moralis.io/api/v2.2/wallets/${walletAddress}/defi/positions?chain=${chain}`;
+    const cursorParam = cursor ? `&cursor=${cursor}` : "";
+    const url = `https://deep-index.moralis.io/api/v2.2/${walletAddress}?chain=${chain}&order=${order}&limit=${limit}${cursorParam}`;
 
-    console.log("[MORALIS API] Fetching DeFi positions:", url);
+    console.log("[MORALIS API] Fetching transactions:", url);
 
     const response = await fetch(url, {
       method: "GET",
@@ -36,17 +40,21 @@ export async function GET(req: NextRequest) {
         response.statusText
       );
       return NextResponse.json(
-        { error: `Failed to fetch positions: ${response.statusText}` },
+        { error: `Failed to fetch transactions: ${response.statusText}` },
         { status: response.status }
       );
     }
 
     const data = await response.json();
-    console.log("[MORALIS API] Fetched positions:", data.length || 0);
+    console.log(
+      "[MORALIS API] Fetched transactions:",
+      data.result?.length || 0
+    );
 
     return NextResponse.json({
       success: true,
-      positions: data,
+      transactions: data.result || [],
+      cursor: data.cursor || null,
       walletAddress,
       chain
     });

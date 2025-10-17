@@ -37,11 +37,10 @@ interface Position {
 }
 
 export default function PositionsPage() {
-  const { address } = useAccount();
+  const { chain } = useAccount();
   const [positions, setPositions] = useState<Position[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [chain] = useState("eth");
 
   // Hardcoded address for demo
   const DEMO_ADDRESS = "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045";
@@ -52,14 +51,31 @@ export default function PositionsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [chain]);
 
+  const getChainName = (chainId: number) => {
+    const chainMap: Record<number, string> = {
+      1: "eth",
+      137: "polygon",
+      56: "bsc",
+      43114: "avalanche",
+      250: "fantom",
+      42161: "arbitrum",
+      10: "optimism",
+    };
+    return chainMap[chainId] || "eth";
+  };
+
   const fetchPositions = async () => {
+    if (!chain) return;
+
     setLoading(true);
     setError(null);
 
     try {
-      console.log("[POSITIONS] Fetching positions for:", DEMO_ADDRESS, "chain:", chain);
+      // Convert chain ID to Moralis chain format
+      const chainName = getChainName(chain.id);
+      console.log("[POSITIONS] Fetching positions for:", DEMO_ADDRESS, "chain:", chainName);
       const response = await fetch(
-        `/api/defi-positions?address=${DEMO_ADDRESS}&chain=${chain}`
+        `/api/defi-positions?address=${DEMO_ADDRESS}&chain=${chainName}`
       );
 
       console.log("[POSITIONS] Response status:", response.status);
