@@ -14,6 +14,7 @@ import {
   getCowProtocolAllowance,
   approveCowProtocol
 } from "@/lib/cowswap-client";
+import { NATIVE_CURRENCY_ADDRESS } from "@/lib/native-currencies";
 import type { Address } from "viem";
 import { formatUnits, parseUnits } from "viem";
 
@@ -415,10 +416,18 @@ function EntireBalanceQuoteDisplay({
   walletClient: any;
   address?: Address;
 }) {
+  const isNativeCurrencyTrade =
+    tokenInfo.isNativeCurrency ||
+    (typeof tokenInfo.fromTokenAddress === "string" &&
+      tokenInfo.fromTokenAddress.toLowerCase() ===
+        NATIVE_CURRENCY_ADDRESS.toLowerCase());
+
   // Fetch balance using wagmi
   const { data: balance, isLoading: balanceLoading } = useBalance({
     address: address,
-    token: tokenInfo.fromTokenAddress as Address,
+    token: isNativeCurrencyTrade
+      ? undefined
+      : (tokenInfo.fromTokenAddress as Address),
     chainId: tokenInfo.chainId
   });
 
@@ -572,6 +581,8 @@ function QuoteDisplay({
         !amountsAndCosts ||
         !amountsAndCosts.afterSlippage ||
         !amountsAndCosts.afterSlippage.buyAmount ||
+        !amountsAndCosts.afterNetworkCosts ||
+        !amountsAndCosts.afterNetworkCosts.buyAmount ||
         !amountsAndCosts.costs ||
         !amountsAndCosts.costs.networkFee
       ) {
@@ -586,30 +597,46 @@ function QuoteDisplay({
         return;
       }
 
-      // Use beforeNetworkCosts for the quote (matches CoW Swap UI)
-      // afterSlippage is what you'll actually receive (after fees)
+      // Use beforeNetworkCosts for the headline quote (matches CoW Swap UI)
+      // afterNetworkCosts is what the user receives once network fees are deducted
       const buyAmountBeforeFees = amountsAndCosts.beforeNetworkCosts.buyAmount;
-      const buyAmountAfterFees = amountsAndCosts.afterSlippage.buyAmount;
+      const buyAmountAfterNetworkCosts =
+        amountsAndCosts.afterNetworkCosts.buyAmount;
       const networkFeeInSellToken =
         amountsAndCosts.costs.networkFee.amountInSellCurrency;
 
+      const formatQuoteAmount = (value: bigint | string, decimals: number) => {
+        const normalized = formatUnits(BigInt(value), decimals);
+        return Number(normalized).toFixed(6);
+      };
+
+      const slippageBps =
+        quoteResponse.quoteResults.tradeParameters?.slippageBps ??
+        quoteResponse.quoteResults.suggestedSlippageBps ??
+        50;
+      const slippagePercent = (Number(slippageBps) / 100).toFixed(2);
+
       console.log("[CLIENT] Quote values:", {
         buyAmountBeforeFees: buyAmountBeforeFees.toString(),
-        buyAmountAfterFees: buyAmountAfterFees.toString(),
-        networkFeeInSellToken: networkFeeInSellToken.toString()
+        buyAmountAfterNetworkCosts: buyAmountAfterNetworkCosts.toString(),
+        networkFeeInSellToken: networkFeeInSellToken.toString(),
+        slippageBps
       });
 
       setQuote({
-        buyAmount: (
-          Number(buyAmountBeforeFees) / Math.pow(10, tokenInfo.toTokenDecimals)
-        ).toFixed(6),
-        buyAmountAfterFees: (
-          Number(buyAmountAfterFees) / Math.pow(10, tokenInfo.toTokenDecimals)
-        ).toFixed(6),
-        feeAmount: (
-          Number(networkFeeInSellToken) /
-          Math.pow(10, tokenInfo.fromTokenDecimals)
-        ).toFixed(6),
+        buyAmount: formatQuoteAmount(
+          buyAmountBeforeFees,
+          tokenInfo.toTokenDecimals
+        ),
+        buyAmountAfterFees: formatQuoteAmount(
+          buyAmountAfterNetworkCosts,
+          tokenInfo.toTokenDecimals
+        ),
+        feeAmount: formatQuoteAmount(
+          networkFeeInSellToken,
+          tokenInfo.fromTokenDecimals
+        ),
+        slippagePercent,
         postSwapOrderFromQuote: quoteResponse.postSwapOrderFromQuote
       });
       setLoading(false);
@@ -771,6 +798,10 @@ function QuoteDisplay({
             </div>
           </div>
           <div>
+            <div className="text-gray-500 text-xs">Slippage</div>
+            <div className="text-white">{quote.slippagePercent}%</div>
+          </div>
+          <div className="col-span-2">
             <div className="text-gray-500 text-xs">Receive (incl. costs)</div>
             <div className="text-white font-semibold">
               {quote.buyAmountAfterFees} {tokenInfo.toToken}
@@ -939,11 +970,18 @@ function CreateOrderButton({
   const { address } = useAccount();
   const publicClient = usePublicClient();
   const { data: walletClient } = useWalletClient();
+  const isNativeCurrencyTrade =
+    tokenInfo.isNativeCurrency ||
+    (typeof tokenInfo.fromTokenAddress === "string" &&
+      tokenInfo.fromTokenAddress.toLowerCase() ===
+        NATIVE_CURRENCY_ADDRESS.toLowerCase());
 
   // Get balance for the sell token
   const { data: balance, isLoading: balanceLoading } = useBalance({
     address: address,
-    token: tokenInfo.fromTokenAddress as Address,
+    token: isNativeCurrencyTrade
+      ? undefined
+      : (tokenInfo.fromTokenAddress as Address),
     chainId: tokenInfo.chainId
   });
 
@@ -958,6 +996,12 @@ function CreateOrderButton({
   useEffect(() => {
     async function checkApproval() {
       if (!publicClient || !walletClient || !address) {
+        setIsCheckingApproval(false);
+        return;
+      }
+
+      if (isNativeCurrencyTrade) {
+        setIsApproved(true);
         setIsCheckingApproval(false);
         return;
       }
@@ -988,7 +1032,8 @@ function CreateOrderButton({
     address,
     tokenInfo.fromTokenAddress,
     tokenInfo.chainId,
-    requiredAmount
+    requiredAmount,
+    isNativeCurrencyTrade
   ]);
 
   const handleClick = async () => {
@@ -1004,26 +1049,30 @@ function CreateOrderButton({
 
       // Step 1: Check and handle approval if needed
       if (!isApproved) {
-        setOrderStatus("checking-approval");
+        if (isNativeCurrencyTrade) {
+          setIsApproved(true);
+        } else {
+          setOrderStatus("checking-approval");
 
-        const allowance = await getCowProtocolAllowance(
-          publicClient,
-          walletClient,
-          {
-            tokenAddress: tokenInfo.fromTokenAddress as Address,
-            owner: address,
-            chainId: tokenInfo.chainId
+          const allowance = await getCowProtocolAllowance(
+            publicClient,
+            walletClient,
+            {
+              tokenAddress: tokenInfo.fromTokenAddress as Address,
+              owner: address,
+              chainId: tokenInfo.chainId
+            }
+          );
+
+          if (allowance < requiredAmount) {
+            setOrderStatus("approving");
+
+            await approveCowProtocol(publicClient, walletClient, {
+              tokenAddress: tokenInfo.fromTokenAddress as Address,
+              amount: requiredAmount,
+              chainId: tokenInfo.chainId
+            });
           }
-        );
-
-        if (allowance < requiredAmount) {
-          setOrderStatus("approving");
-
-          await approveCowProtocol(publicClient, walletClient, {
-            tokenAddress: tokenInfo.fromTokenAddress as Address,
-            amount: requiredAmount,
-            chainId: tokenInfo.chainId
-          });
 
           setIsApproved(true);
         }

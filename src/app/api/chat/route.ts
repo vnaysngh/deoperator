@@ -13,6 +13,11 @@ import {
   getChainIdForPlatform
 } from "@/lib/coingecko";
 import { createPublicClient, http, type Address } from "viem";
+import {
+  isNativeCurrency,
+  getNativeCurrency,
+  NATIVE_CURRENCY_ADDRESS
+} from "@/lib/native-currencies";
 
 export const maxDuration = 30;
 
@@ -104,6 +109,12 @@ export async function POST(req: Request) {
       - Supports thousands of verified tokens via curated lists and CoinGecko enrichment
       - Popular tokens: WETH, USDC, USDT, DAI, WBTC, LINK, AAVE, ARB, MATIC, WBNB, cbETH, etc.
       - Bridged and wrapped assets exist across networks (e.g., WETH on Base, BTCB on BNB Chain). Always confirm the chain the user specifies.
+
+      🔥 NATIVE CURRENCY SUPPORT:
+      - Native blockchain tokens (ETH on Ethereum/Arbitrum/Base, BNB on BNB Chain, MATIC on Polygon) are FULLY SUPPORTED
+      - When user asks to swap ETH, BNB, or MATIC (the native tokens), we handle it automatically
+      - Users can say "swap ETH to USDC" or "swap 1 ETH for USDC" - you understand they mean the native ETH
+      - No need to ask for wrapped versions (WETH/WBNB) - we handle native tokens directly
 
       Token Lookup Strategy:
       - When user asks for a token, use the token symbol they provide directly
@@ -327,7 +338,50 @@ export async function POST(req: Request) {
               const normalizedTo = normalizeTokenSymbol(toToken, chainId);
               const chainName = getChainName(chainId);
 
-              // Get token information
+              // Check if fromToken is native currency (ETH, BNB, MATIC, etc.)
+              if (isNativeCurrency(normalizedFrom, chainId)) {
+                console.log("[TOOL:getSwapQuote] Detected native currency:", normalizedFrom);
+                const nativeCurrency = getNativeCurrency(chainId)!;
+
+                // Still need to get toToken info
+                const toTokenInfo = await getTokenBySymbol(normalizedTo, chainId);
+                if (!toTokenInfo) {
+                  const errorResult = toolError({
+                    success: false,
+                    userMessage: `I couldn't find ${toToken} on ${chainName}. Could you double-check the token symbol? If you have the contract address (0x...), I can look it up directly. Popular tokens include WETH, USDC, USDT, ARB, and DAI.`,
+                    error: `Token not found: ${toToken}`
+                  });
+                  console.log(
+                    "[TOOL:getSwapQuote] Returning to token error:",
+                    JSON.stringify(errorResult, null, 2)
+                  );
+                  return errorResult;
+                }
+
+                // Return native currency token info for client-side SDK
+                const successResult = toolSuccess({
+                  success: true,
+                  chain: chainName,
+                  chainId,
+                  fromToken: nativeCurrency.symbol,
+                  toToken: normalizedTo,
+                  amount,
+                  fromTokenAddress: NATIVE_CURRENCY_ADDRESS, // Special address for native tokens
+                  fromTokenDecimals: nativeCurrency.decimals,
+                  toTokenAddress: toTokenInfo.address,
+                  toTokenDecimals: toTokenInfo.decimals,
+                  isNativeCurrency: true, // Flag for client to use postSellNativeCurrencyOrder
+                  needsClientQuote: true,
+                  message: `Got ${nativeCurrency.symbol} → ${normalizedTo} token details on ${chainName}. I'll fetch a fresh CoW quote next.`
+                });
+                console.log(
+                  "[TOOL:getSwapQuote] Returning native currency success:",
+                  JSON.stringify(successResult, null, 2)
+                );
+                return successResult;
+              }
+
+              // Get token information (normal ERC20 flow)
               const fromTokenInfo = await getTokenBySymbol(
                 normalizedFrom,
                 chainId
@@ -358,86 +412,6 @@ export async function POST(req: Request) {
                   JSON.stringify(errorResult, null, 2)
                 );
                 return errorResult;
-              }
-
-              // Try to fetch a quote from CoW Protocol to check if there's liquidity
-              // This is a server-side check to catch liquidity issues early
-              try {
-                const { parseUnits } = await import("viem");
-                const sellAmount = parseUnits(amount, fromTokenInfo.decimals);
-
-                // Make a basic quote request to CoW API to check liquidity
-                const cowApiSlug =
-                  chainId === 1
-                    ? "mainnet"
-                    : chainId === 56
-                    ? "bnb"
-                    : chainId === 137
-                    ? "polygon"
-                    : chainId === 8453
-                    ? "base"
-                    : chainId === 42161
-                    ? "arbitrum_one"
-                    : undefined;
-
-                if (!cowApiSlug) {
-                  console.log(
-                    "[TOOL:getSwapQuote] Cow API slug not available for chain, skipping liquidity pre-check",
-                    { chainId }
-                  );
-                } else {
-                  const quoteUrl = `https://api.cow.fi/${cowApiSlug}/api/v1/quote`;
-
-                  const quoteResponse = await fetch(quoteUrl, {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({
-                      sellToken: fromTokenInfo.address,
-                      buyToken: toTokenInfo.address,
-                      sellAmountBeforeFee: sellAmount.toString(),
-                      from: "0x0000000000000000000000000000000000000000", // Dummy address for quote check
-                      kind: "sell",
-                      priceQuality: "fast"
-                    })
-                  });
-
-                  if (!quoteResponse.ok) {
-                    const errorText = await quoteResponse.text();
-                    console.log(
-                      "[TOOL:getSwapQuote] Quote check failed:",
-                      quoteResponse.status,
-                      errorText
-                    );
-
-                    // Check if it's a liquidity issue
-                    if (
-                      errorText.toLowerCase().includes("liquidity") ||
-                      quoteResponse.status === 404
-                    ) {
-                      const errorMessage = `There isn't enough liquidity to swap ${amount} ${normalizedFrom} for ${normalizedTo} on ${chainName}. Try using a smaller amount or different tokens.`;
-                      console.log(
-                        "[TOOL:getSwapQuote] Returning liquidity error:",
-                        errorMessage
-                      );
-                      const liquidityErrorResult = toolError({
-                        success: false,
-                        userMessage: errorMessage,
-                        error: "Insufficient liquidity"
-                      });
-                      console.log(
-                        "[TOOL:getSwapQuote] Liquidity error result:",
-                        JSON.stringify(liquidityErrorResult, null, 2)
-                      );
-                      return liquidityErrorResult;
-                    }
-                  }
-                }
-              } catch (liquidityCheckError) {
-                console.log(
-                  "[TOOL:getSwapQuote] Liquidity check failed, continuing anyway:",
-                  liquidityCheckError
-                );
-                // Continue anyway - the client-side SDK will handle it
               }
 
               // Return token info for client-side SDK to use
@@ -510,7 +484,48 @@ export async function POST(req: Request) {
               const normalizedTo = normalizeTokenSymbol(toToken, chainId);
               const chainName = getChainName(chainId);
 
-              // Get token information
+              // Check if fromToken is native currency
+              if (isNativeCurrency(normalizedFrom, chainId)) {
+                console.log("[TOOL:createOrder] Detected native currency:", normalizedFrom);
+                const nativeCurrency = getNativeCurrency(chainId)!;
+
+                // Get toToken info
+                const toTokenInfo = await getTokenBySymbol(normalizedTo, chainId);
+                if (!toTokenInfo) {
+                  return toolError({
+                    success: false,
+                    userMessage: "Token not found. Could you double-check the token symbols or share the contract addresses?",
+                    error: "Token lookup failed"
+                  });
+                }
+
+                // Convert amount to smallest unit
+                const sellAmount = formatTokenAmount(
+                  amount,
+                  nativeCurrency.decimals
+                );
+
+                // Return native currency token info for client-side SDK
+                return toolSuccess({
+                  success: true,
+                  chain: chainName,
+                  chainId,
+                  fromToken: nativeCurrency.symbol,
+                  toToken: normalizedTo,
+                  amount,
+                  fromTokenAddress: NATIVE_CURRENCY_ADDRESS, // Special address for native tokens
+                  fromTokenDecimals: nativeCurrency.decimals,
+                  toTokenAddress: toTokenInfo.address,
+                  toTokenDecimals: toTokenInfo.decimals,
+                  sellAmount: sellAmount.toString(),
+                  userAddress: walletAddress,
+                  isNativeCurrency: true, // Flag for client to use postSellNativeCurrencyOrder
+                  needsClientSubmission: true,
+                  message: `Ready to swap ${amount} ${nativeCurrency.symbol} for ${normalizedTo}. The client SDK will now fetch a quote and submit your order.`
+                });
+              }
+
+              // Get token information (normal ERC20 flow)
               const fromTokenInfo = await getTokenBySymbol(
                 normalizedFrom,
                 chainId
@@ -844,6 +859,81 @@ export async function POST(req: Request) {
               const normalized = normalizeTokenSymbol(token, chainId);
               const chainName = getChainName(chainId);
 
+              // Check if this is a native currency (ETH, BNB, MATIC/POL/POLYGON)
+              if (isNativeCurrency(normalized, chainId)) {
+                console.log("[TOOL:getTokenUSDPrice] Detected native currency:", normalized);
+                const nativeCurrency = getNativeCurrency(chainId)!;
+
+                // Map native currency symbols to CoinGecko coin IDs
+                // We directly use the coin ID to fetch details (no search API needed)
+                const coinGeckoIdMap: Record<string, string> = {
+                  'ETH': 'ethereum',
+                  'BNB': 'binancecoin',
+                  'MATIC': 'polygon-ecosystem-token',
+                  'POL': 'polygon-ecosystem-token',
+                  'POLYGON': 'polygon-ecosystem-token'
+                };
+
+                const coinGeckoId = coinGeckoIdMap[nativeCurrency.symbol];
+                if (!coinGeckoId) {
+                  return toolError({
+                    success: false,
+                    userMessage: `I don't have price data for ${nativeCurrency.symbol} yet. Want to try a different token?`,
+                    error: `No CoinGecko ID mapping for ${nativeCurrency.symbol}`
+                  });
+                }
+
+                try {
+                  // Use the existing CoinGecko helper to fetch coin details
+                  const { getCoinDetails } = await import("@/lib/coingecko");
+                  const coinDetails = await getCoinDetails(coinGeckoId);
+
+                  if (!coinDetails) {
+                    return toolError({
+                      success: false,
+                      userMessage: `I couldn't fetch price data for ${nativeCurrency.symbol} from CoinGecko. Want to try again?`,
+                      error: "CoinGecko returned null"
+                    });
+                  }
+
+                  const usdPrice = coinDetails.market_data?.current_price?.usd;
+
+                  if (typeof usdPrice !== 'number') {
+                    return toolError({
+                      success: false,
+                      userMessage: `I couldn't find current USD price for ${nativeCurrency.symbol}. Want to try again?`,
+                      error: "USD price not available in CoinGecko response"
+                    });
+                  }
+
+                  // Format price with appropriate decimals
+                  const formattedPrice = usdPrice >= 1
+                    ? usdPrice.toFixed(2)
+                    : usdPrice.toFixed(6);
+
+                  console.log(`[TOOL:getTokenUSDPrice] ${nativeCurrency.symbol} price from CoinGecko:`, formattedPrice);
+
+                  return toolSuccess({
+                    success: true,
+                    chain: chainName,
+                    chainId,
+                    token: nativeCurrency.symbol,
+                    price: formattedPrice,
+                    priceNumber: usdPrice,
+                    tokenAddress: NATIVE_CURRENCY_ADDRESS,
+                    message: `${nativeCurrency.symbol} is currently $${formattedPrice} USD on ${chainName}`
+                  });
+                } catch (geckoError) {
+                  console.error("[TOOL:getTokenUSDPrice] CoinGecko error:", geckoError);
+                  return toolError({
+                    success: false,
+                    userMessage: `Having trouble fetching ${nativeCurrency.symbol} price from CoinGecko. Want to try again?`,
+                    error: geckoError instanceof Error ? geckoError.message : "CoinGecko API failed"
+                  });
+                }
+              }
+
+              // For ERC-20 tokens, use the existing price API
               const result = await getTokenUSDPrice(normalized, chainId);
 
               if (!result.success) {
@@ -1225,6 +1315,39 @@ export async function POST(req: Request) {
 
               // Get token information for both tokens
               const { getTokenBySymbol } = await import("@/lib/tokens");
+
+              // Check if fromToken is native currency
+              if (isNativeCurrency(normalizedFrom, chainId)) {
+                console.log("[TOOL:getSwapQuoteForEntireBalance] Detected native currency:", normalizedFrom);
+                const nativeCurrency = getNativeCurrency(chainId)!;
+
+                const toTokenInfo = await getTokenBySymbol(normalizedTo, chainId);
+                if (!toTokenInfo) {
+                  return toolError({
+                    success: false,
+                    userMessage: `I couldn't find ${toToken} on ${chainName}. Could you double-check the token symbol?`,
+                    error: `Token not found: ${toToken}`
+                  });
+                }
+
+                // Return native currency token info - client will fetch balance and quote
+                return toolSuccess({
+                  success: true,
+                  chain: chainName,
+                  chainId,
+                  fromToken: nativeCurrency.symbol,
+                  toToken: normalizedTo,
+                  fromTokenAddress: NATIVE_CURRENCY_ADDRESS,
+                  fromTokenDecimals: nativeCurrency.decimals,
+                  toTokenAddress: toTokenInfo.address,
+                  toTokenDecimals: toTokenInfo.decimals,
+                  isNativeCurrency: true,
+                  needsClientBalanceFetch: true,
+                  needsClientQuote: true,
+                  message: `Checking your ${nativeCurrency.symbol} balance on ${chainName}...`
+                });
+              }
+
               const fromTokenInfo = await getTokenBySymbol(
                 normalizedFrom,
                 chainId

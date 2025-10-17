@@ -4,12 +4,12 @@ import {
   getCoinDetailsBySymbol,
   getPlatformDetailForChain
 } from './coingecko'
+import { getNativeCurrency } from './native-currencies'
 
 import { createPublicClient, http, erc20Abi } from 'viem'
 
 const TOKEN_LISTS = {
-  UNISWAP: 'https://tokens.uniswap.org',
-  PANCAKESWAP: 'https://tokens.pancakeswap.finance/pancakeswap-extended.json'
+  UNISWAP: 'https://tokens.uniswap.org'
 }
 
 interface TokenListToken {
@@ -107,30 +107,11 @@ async function fetchTokenLists(): Promise<TokenCache> {
       ethereum: Object.keys(tokens[CHAIN_IDS.ETHEREUM]).length,
       polygon: Object.keys(tokens[CHAIN_IDS.POLYGON]).length,
       base: Object.keys(tokens[CHAIN_IDS.BASE]).length,
-      arbitrum: Object.keys(tokens[CHAIN_IDS.ARBITRUM]).length
+      arbitrum: Object.keys(tokens[CHAIN_IDS.ARBITRUM]).length,
+      bnb: Object.keys(tokens[CHAIN_IDS.BNB]).length
     })
 
-    console.log('[TOKENS] Fetching PancakeSwap token list...')
-    const pancakeResponse = await fetch(TOKEN_LISTS.PANCAKESWAP)
-    const pancakeData: TokenList = await pancakeResponse.json()
-
-    pancakeData.tokens.forEach((token) => {
-      if (token.chainId === CHAIN_IDS.BNB) {
-        const upperSymbol = token.symbol.toUpperCase()
-        tokens[CHAIN_IDS.BNB][upperSymbol] = new Token(
-          CHAIN_IDS.BNB,
-          token.address,
-          token.decimals,
-          token.symbol,
-          token.name
-        )
-      }
-    })
-
-    console.log(
-      `[TOKENS] Pancake list count ${Object.keys(tokens[CHAIN_IDS.BNB]).length}`
-    )
-
+    console.log('[TOKENS] Token list fetching complete. Using CoinGecko for missing tokens.')
     return tokens
   } catch (error) {
     console.error('[TOKENS] Error fetching token lists:', error)
@@ -294,7 +275,30 @@ export function getSupportedChainIds(): number[] {
 }
 
 export function normalizeTokenSymbol(input: string, chainId: number): string {
-  const normalized = input.toUpperCase().trim()
+  const trimmed = input.trim()
+
+  if (trimmed === '') {
+    return trimmed
+  }
+
+  const lower = trimmed.toLowerCase()
+  const native = getNativeCurrency(chainId)
+
+  if (native) {
+    const nativeAliases = new Set(
+      [
+        native.symbol,
+        native.name,
+        ...native.aliases
+      ].map((value) => value.toLowerCase())
+    )
+
+    if (nativeAliases.has(lower)) {
+      return native.symbol.toUpperCase()
+    }
+  }
+
+  const normalized = trimmed.toUpperCase()
 
   const variations: Record<string, string> = {
     ETH: 'WETH',

@@ -12,8 +12,8 @@ if (!projectId) {
 
 type ChainWithRpcUrls = {
   rpcUrls: {
-    default: { http: readonly string[] }
-  }
+    default: { http: readonly string[] };
+  };
 };
 
 function resolveRpcUrl(
@@ -24,8 +24,8 @@ function resolveRpcUrl(
     return envVar;
   }
 
-  const publicUrls =
-    (chain.rpcUrls as { public?: { http: readonly string[] } }).public?.http;
+  const publicUrls = (chain.rpcUrls as { public?: { http: readonly string[] } })
+    .public?.http;
   if (publicUrls && publicUrls.length > 0) {
     return publicUrls[0];
   }
@@ -42,37 +42,37 @@ export const config = getDefaultConfig({
   appName: "DexLuthor",
   projectId,
   chains: [mainnet, bsc, polygon, base, arbitrum],
-  transports: {
-    [mainnet.id]: http(
-      resolveRpcUrl(
-        process.env.NEXT_PUBLIC_MAINNET_RPC_URL,
-        mainnet
-      )
-    ),
-    [bsc.id]: http(
-      resolveRpcUrl(
-        process.env.NEXT_PUBLIC_BSC_RPC_URL,
-        bsc
-      )
-    ),
-    [polygon.id]: http(
-      resolveRpcUrl(
-        process.env.NEXT_PUBLIC_POLYGON_RPC_URL,
-        polygon
-      )
-    ),
-    [base.id]: http(
-      resolveRpcUrl(
-        process.env.NEXT_PUBLIC_BASE_RPC_URL,
-        base
-      )
-    ),
-    [arbitrum.id]: http(
-      resolveRpcUrl(
-        process.env.NEXT_PUBLIC_ARBITRUM_RPC_URL,
-        arbitrum
-      )
-    )
-  },
+  // transports: {
+  //   [mainnet.id]: http(
+  //     resolveRpcUrl(
+  //       process.env.NEXT_PUBLIC_MAINNET_RPC_URL,
+  //       mainnet
+  //     )
+  //   ),
+  //   [bsc.id]: http(
+  //     resolveRpcUrl(
+  //       process.env.NEXT_PUBLIC_BSC_RPC_URL,
+  //       bsc
+  //     )
+  //   ),
+  //   [polygon.id]: http(
+  //     resolveRpcUrl(
+  //       process.env.NEXT_PUBLIC_POLYGON_RPC_URL,
+  //       polygon
+  //     )
+  //   ),
+  //   [base.id]: http(
+  //     resolveRpcUrl(
+  //       process.env.NEXT_PUBLIC_BASE_RPC_URL,
+  //       base
+  //     )
+  //   ),
+  //   [arbitrum.id]: http(
+  //     resolveRpcUrl(
+  //       process.env.NEXT_PUBLIC_ARBITRUM_RPC_URL,
+  //       arbitrum
+  //     )
+  //   )
+  // },
   ssr: true
 });
