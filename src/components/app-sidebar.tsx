@@ -23,6 +23,7 @@ import {
   Settings,
   HelpCircle
 } from "lucide-react";
+import Link from "next/link";
 
 const menuItems = [
   { title: "Home", icon: Home, url: "/" },
@@ -71,10 +72,10 @@ export function AppSidebar() {
                     asChild
                     className="hover:bg-white/5 hover:text-primary-400 transition-colors"
                   >
-                    <a href={item.url}>
+                    <Link href={item.url}>
                       <item.icon className="w-4 h-4" />
                       <span>{item.title}</span>
-                    </a>
+                    </Link>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
               ))}
