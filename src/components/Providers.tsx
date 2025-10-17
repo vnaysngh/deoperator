@@ -1,29 +1,111 @@
 "use client";
 
-import { WagmiProvider } from "wagmi";
+import { useEffect, useMemo, useState } from "react";
+import type { ReactNode } from "react";
+import {
+  WagmiProvider,
+  cookieToInitialState,
+  type Config as WagmiConfig
+} from "wagmi";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { RainbowKitProvider } from "@rainbow-me/rainbowkit";
-import { config } from "@/lib/wagmi";
-import { useState } from "react";
+import { createAppKit } from "@reown/appkit/react";
 import { ErrorBoundary } from "./ErrorBoundary";
+import { networks, projectId, wagmiAdapter } from "@/lib/wagmi";
+import { arbitrum, base, bsc, mainnet, polygon } from "@reown/appkit/networks";
 
-export function Providers({ children }: { children: React.ReactNode }) {
-  const queryClient = new QueryClient({
-    defaultOptions: {
-      queries: {
-        // Disable retries for SSR
-        retry: false,
-        // Prevent refetching on window focus during development
-        refetchOnWindowFocus: false
-      }
-    }
+type ProvidersProps = {
+  children: ReactNode;
+  cookies?: string | null;
+};
+
+type AppKitWindow = Window &
+  typeof globalThis & {
+    __APP_KIT_MODAL__?: ReturnType<typeof createAppKit>;
+  };
+
+const metadata = {
+  name: "DexLuthor",
+  description: "AI-powered CoW Protocol trading",
+  url: "https://dexluthor.app",
+  icons: ["https://avatars.githubusercontent.com/u/179229932"]
+};
+
+function ensureAppKitInstance() {
+  if (typeof window === "undefined") {
+    return undefined;
+  }
+
+  const extendedWindow = window as AppKitWindow;
+  if (extendedWindow.__APP_KIT_MODAL__) {
+    return extendedWindow.__APP_KIT_MODAL__;
+  }
+
+  if (!projectId) {
+    return undefined;
+  }
+
+  const modal = createAppKit({
+    adapters: [wagmiAdapter],
+    projectId,
+    networks: [mainnet, bsc, polygon, base, arbitrum],
+    defaultNetwork: networks[0],
+    metadata,
+    features: {
+      analytics: true
+    },
+    enableReconnect: true
   });
+
+  extendedWindow.__APP_KIT_MODAL__ = modal;
+  return modal;
+}
+
+export function openAppKitModal() {
+  if (!projectId) {
+    console.warn(
+      "WalletConnect Project ID is not configured. Unable to open AppKit modal."
+    );
+    return;
+  }
+
+  const modal = ensureAppKitInstance();
+  modal?.open();
+}
+
+export function Providers({ children, cookies }: ProvidersProps) {
+  const [queryClient] = useState(
+    () =>
+      new QueryClient({
+        defaultOptions: {
+          queries: {
+            retry: false,
+            refetchOnWindowFocus: false
+          }
+        }
+      })
+  );
+
+  useEffect(() => {
+    ensureAppKitInstance();
+  }, []);
+
+  const initialState = useMemo(
+    () =>
+      cookieToInitialState(
+        wagmiAdapter.wagmiConfig as WagmiConfig,
+        cookies ?? undefined
+      ),
+    [cookies]
+  );
 
   return (
     <ErrorBoundary>
-      <WagmiProvider config={config}>
+      <WagmiProvider
+        config={wagmiAdapter.wagmiConfig as WagmiConfig}
+        initialState={initialState}
+      >
         <QueryClientProvider client={queryClient}>
-          <RainbowKitProvider>{children}</RainbowKitProvider>
+          {children}
         </QueryClientProvider>
       </WagmiProvider>
     </ErrorBoundary>

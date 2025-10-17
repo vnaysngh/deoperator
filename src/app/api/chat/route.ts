@@ -212,6 +212,7 @@ export async function POST(req: Request) {
       - ⚠️ CRITICAL: You MUST call getSwapQuote tool for EVERY new swap request, even if you recently got a quote for the same token pair
       - NEVER reuse old quote data - prices change constantly
       - If the user changes the amount (e.g., from "10 ARB" to "2 ARB"), you MUST call getSwapQuote again with the NEW amount
+      - ✅ Balance checks are informative only. Even if the user doesn't currently hold enough of the sell token, STILL fetch and share a fresh quote so they know the price. Let them know they'll need funds before creating an order.
       - Show the quote details clearly:
         - Input: X TOKEN_A
         - Output: ~Y TOKEN_B

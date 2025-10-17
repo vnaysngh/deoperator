@@ -23,8 +23,9 @@
     "@radix-ui/react-separator": "^1.1.7",
     "@radix-ui/react-slot": "^1.2.3",
     "@radix-ui/react-tooltip": "^1.2.8",
-    "@rainbow-me/rainbowkit": "^2.2.8",
-    "@tanstack/react-query": "^5.90.2",
+    "@reown/appkit": "^1.8.10",
+    "@reown/appkit-adapter-wagmi": "^1.8.10",
+    "@tanstack/react-query": "^5.90.5",
     "@uniswap/sdk-core": "^7.7.2",
     "ai": "^5.0.68",
     "class-variance-authority": "^0.7.1",
@@ -34,8 +35,8 @@
     "react": "19.1.0",
     "react-dom": "19.1.0",
     "tailwind-merge": "^3.3.1",
-    "viem": "2.x",
-    "wagmi": "^2.18.0",
+    "viem": "^2.38.3",
+    "wagmi": "^2.18.1",
     "zod": "^4.1.12"
   },
   "devDependencies": {

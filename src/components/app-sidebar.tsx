@@ -10,7 +10,7 @@ import {
   SidebarHeader,
   SidebarMenu,
   SidebarMenuButton,
-  SidebarMenuItem,
+  SidebarMenuItem
 } from "@/components/ui/sidebar";
 import {
   Home,
@@ -21,24 +21,24 @@ import {
   History,
   Shield,
   Settings,
-  HelpCircle,
+  HelpCircle
 } from "lucide-react";
 
 const menuItems = [
   { title: "Home", icon: Home, url: "/" },
-  { title: "Swap", icon: ArrowLeftRight, url: "/swap" },
-  { title: "Portfolio", icon: Wallet, url: "/portfolio" },
-  { title: "Analytics", icon: BarChart3, url: "/analytics" },
-  { title: "Liquidity", icon: TrendingUp, url: "/liquidity" },
+  { title: "Trade", icon: ArrowLeftRight, url: "/trade" },
+  { title: "Positions", icon: Wallet, url: "/positions" },
+  { title: "Transactions", icon: BarChart3, url: "/transactions" }
+  // { title: "Liquidity", icon: TrendingUp, url: "/liquidity" },
 ];
 
-const secondaryItems = [
+/* const secondaryItems = [
   { title: "Transaction History", icon: History, url: "/history" },
   { title: "Security", icon: Shield, url: "/security" },
   { title: "Settings", icon: Settings, url: "/settings" },
   { title: "Help & Support", icon: HelpCircle, url: "/help" },
 ];
-
+ */
 export function AppSidebar() {
   return (
     <Sidebar collapsible="icon" className="border-r border-white/5">
@@ -82,7 +82,7 @@ export function AppSidebar() {
           </SidebarGroupContent>
         </SidebarGroup>
 
-        <SidebarGroup>
+        {/*   <SidebarGroup>
           <SidebarGroupLabel className="text-gray-500 text-xs">
             More
           </SidebarGroupLabel>
@@ -103,7 +103,7 @@ export function AppSidebar() {
               ))}
             </SidebarMenu>
           </SidebarGroupContent>
-        </SidebarGroup>
+        </SidebarGroup> */}
       </SidebarContent>
 
       <SidebarFooter className="border-t border-white/5">
@@ -111,7 +111,9 @@ export function AppSidebar() {
           <SidebarMenuItem>
             <SidebarMenuButton className="hover:bg-white/5">
               <div className="w-8 h-8 rounded-full bg-gradient-to-br from-primary-600/20 to-primary-700/20 flex items-center justify-center border border-primary-500/30">
-                <span className="text-primary-400 font-semibold text-sm">V</span>
+                <span className="text-primary-400 font-semibold text-sm">
+                  V
+                </span>
               </div>
               <div className="flex flex-col gap-0.5 leading-none">
                 <span className="text-sm font-medium">Vinay</span>

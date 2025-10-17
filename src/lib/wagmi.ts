@@ -1,8 +1,17 @@
-import { getDefaultConfig } from "@rainbow-me/rainbowkit";
-import { http } from "wagmi";
-import { arbitrum, base, bsc, mainnet, polygon } from "wagmi/chains";
+import { cookieStorage, createStorage } from "@wagmi/core";
+import { WagmiAdapter } from "@reown/appkit-adapter-wagmi";
+import {
+  arbitrum,
+  base,
+  bsc,
+  mainnet,
+  polygon
+} from "@reown/appkit/networks";
 
-const projectId = process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID || "";
+const projectId =
+  process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID ||
+  process.env.NEXT_PUBLIC_PROJECT_ID ||
+  "";
 
 if (!projectId) {
   console.warn(
@@ -10,69 +19,16 @@ if (!projectId) {
   );
 }
 
-type ChainWithRpcUrls = {
-  rpcUrls: {
-    default: { http: readonly string[] };
-  };
-};
+export const networks = [mainnet, bsc, polygon, base, arbitrum];
 
-function resolveRpcUrl(
-  envVar: string | undefined,
-  chain: ChainWithRpcUrls
-): string {
-  if (envVar && envVar.length > 0) {
-    return envVar;
-  }
-
-  const publicUrls = (chain.rpcUrls as { public?: { http: readonly string[] } })
-    .public?.http;
-  if (publicUrls && publicUrls.length > 0) {
-    return publicUrls[0];
-  }
-
-  const defaultUrls = chain.rpcUrls.default.http;
-  if (defaultUrls.length > 0) {
-    return defaultUrls[0];
-  }
-
-  throw new Error("No RPC URL available for the configured chain.");
-}
-
-export const config = getDefaultConfig({
-  appName: "DexLuthor",
-  projectId,
-  chains: [mainnet, bsc, polygon, base, arbitrum],
-  // transports: {
-  //   [mainnet.id]: http(
-  //     resolveRpcUrl(
-  //       process.env.NEXT_PUBLIC_MAINNET_RPC_URL,
-  //       mainnet
-  //     )
-  //   ),
-  //   [bsc.id]: http(
-  //     resolveRpcUrl(
-  //       process.env.NEXT_PUBLIC_BSC_RPC_URL,
-  //       bsc
-  //     )
-  //   ),
-  //   [polygon.id]: http(
-  //     resolveRpcUrl(
-  //       process.env.NEXT_PUBLIC_POLYGON_RPC_URL,
-  //       polygon
-  //     )
-  //   ),
-  //   [base.id]: http(
-  //     resolveRpcUrl(
-  //       process.env.NEXT_PUBLIC_BASE_RPC_URL,
-  //       base
-  //     )
-  //   ),
-  //   [arbitrum.id]: http(
-  //     resolveRpcUrl(
-  //       process.env.NEXT_PUBLIC_ARBITRUM_RPC_URL,
-  //       arbitrum
-  //     )
-  //   )
-  // },
-  ssr: true
+export const wagmiAdapter = new WagmiAdapter({
+  projectId: projectId || "demo",
+  networks,
+  ssr: true,
+  storage: createStorage({
+    storage: cookieStorage
+  })
 });
+
+export const config = wagmiAdapter.wagmiConfig;
+export { projectId };

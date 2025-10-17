@@ -533,7 +533,31 @@ function QuoteDisplay({
     setLoading(true);
     setError(null);
 
-    if (!publicClient || !walletClient || !address) {
+    let activeWalletClient = walletClient;
+
+    if (!publicClient || !address) {
+      setError("Please connect your wallet");
+      setLoading(false);
+      return;
+    }
+
+    if (!activeWalletClient) {
+      try {
+        const { getWalletClient } = await import("wagmi/actions");
+        const { wagmiAdapter } = await import("@/lib/wagmi");
+        activeWalletClient = await getWalletClient(
+          wagmiAdapter.wagmiConfig,
+          {
+            account: address,
+            chainId: tokenInfo.chainId
+          }
+        );
+      } catch (walletClientError) {
+        console.error("[CLIENT] Unable to resolve wallet client:", walletClientError);
+      }
+    }
+
+    if (!activeWalletClient) {
       setError("Please connect your wallet");
       setLoading(false);
       return;
@@ -545,7 +569,7 @@ function QuoteDisplay({
       // Import and use the client SDK
       const { getSwapQuote } = await import("@/lib/cowswap-client");
 
-      const quoteResponse = await getSwapQuote(publicClient, walletClient, {
+      const quoteResponse = await getSwapQuote(publicClient, activeWalletClient, {
         sellToken: tokenInfo.fromTokenAddress as Address,
         sellTokenDecimals: tokenInfo.fromTokenDecimals,
         buyToken: tokenInfo.toTokenAddress as Address,
