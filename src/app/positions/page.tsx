@@ -1,0 +1,410 @@
+"use client";
+
+import { useState, useEffect } from "react";
+import { useAccount } from "wagmi";
+import { WalletConnect } from "@/components/WalletConnect";
+import { AppSidebar } from "@/components/app-sidebar";
+import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar";
+import { PositionsIntelligence } from "@/components/PositionsIntelligence";
+
+interface Token {
+  token_type: string;
+  name: string;
+  symbol: string;
+  contract_address: string;
+  decimals: string;
+  logo?: string;
+  thumbnail?: string;
+  balance: string;
+  balance_formatted: string;
+  usd_price?: number | null;
+  usd_value?: number | null;
+}
+
+interface Position {
+  protocol_name: string;
+  protocol_id: string;
+  protocol_url: string;
+  protocol_logo: string;
+  position: {
+    label: string;
+    tokens: Token[];
+    address: string;
+    balance_usd: number | null;
+    total_unclaimed_usd_value: number | null;
+    position_details?: Record<string, unknown>;
+  };
+}
+
+export default function PositionsPage() {
+  const { address } = useAccount();
+  const [positions, setPositions] = useState<Position[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [chain] = useState("eth");
+
+  // Hardcoded address for demo
+  const DEMO_ADDRESS = "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045";
+
+  useEffect(() => {
+    // Always fetch positions with hardcoded address
+    fetchPositions();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chain]);
+
+  const fetchPositions = async () => {
+    setLoading(true);
+    setError(null);
+
+    try {
+      console.log("[POSITIONS] Fetching positions for:", DEMO_ADDRESS, "chain:", chain);
+      const response = await fetch(
+        `/api/defi-positions?address=${DEMO_ADDRESS}&chain=${chain}`
+      );
+
+      console.log("[POSITIONS] Response status:", response.status);
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        console.error("[POSITIONS] Error response:", errorData);
+        throw new Error(errorData.error || "Failed to fetch positions");
+      }
+
+      const data = await response.json();
+      console.log("[POSITIONS] Fetched data:", data);
+      setPositions(data.positions || []);
+      console.log("[POSITIONS] Set positions count:", data.positions?.length || 0);
+    } catch (err) {
+      console.error("[POSITIONS] Error:", err);
+      setError(err instanceof Error ? err.message : "Failed to fetch positions");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const getPositionIcon = (label: string) => {
+    switch (label.toLowerCase()) {
+      case "liquidity":
+        return "💧";
+      case "staking":
+        return "🔒";
+      case "supplied":
+        return "💰";
+      default:
+        return "📊";
+    }
+  };
+
+  const getProtocolColor = (protocolId: string) => {
+    const colors: Record<string, string> = {
+      "uniswap-v2": "from-pink-500/20 to-purple-500/20 border-pink-500/30",
+      "uniswap-v3": "from-pink-500/20 to-purple-500/20 border-pink-500/30",
+      lido: "from-blue-500/20 to-cyan-500/20 border-blue-500/30",
+      "aave-v2": "from-purple-500/20 to-indigo-500/20 border-purple-500/30",
+      "aave-v3": "from-purple-500/20 to-indigo-500/20 border-purple-500/30",
+    };
+    return colors[protocolId] || "from-emerald-500/20 to-teal-500/20 border-emerald-500/30";
+  };
+
+  return (
+    <SidebarProvider>
+      <AppSidebar />
+      <SidebarInset className="md:pl-[var(--sidebar-width)]">
+        <div className="min-h-screen">
+          <header className="border-b border-white/5">
+            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h1 className="text-2xl font-bold gradient-text">
+                    DeFi Positions
+                  </h1>
+                  <p className="text-sm text-gray-400 mt-1">
+                    Track and understand your DeFi portfolio
+                  </p>
+                </div>
+                <WalletConnect />
+              </div>
+            </div>
+          </header>
+
+          <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+            {loading ? (
+              <div className="flex items-center justify-center py-20">
+                <div className="text-center">
+                  <div className="w-16 h-16 border-4 border-primary-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+                  <p className="text-gray-400">Loading your positions...</p>
+                </div>
+              </div>
+            ) : error ? (
+              <div className="text-center py-20">
+                <div className="glass-strong rounded-xl p-6 max-w-md mx-auto border border-red-500/30">
+                  <div className="text-red-400 mb-4">⚠️ {error}</div>
+                  <button
+                    onClick={fetchPositions}
+                    className="px-6 py-2 rounded-lg bg-primary-600 hover:bg-primary-500 text-white font-semibold"
+                  >
+                    Try Again
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                {/* Positions List */}
+                <div className="lg:col-span-2 space-y-4">
+                  {positions.length === 0 ? (
+                    <div className="text-center py-12 glass-strong rounded-xl">
+                      <div className="text-6xl mb-4">🌾</div>
+                      <h3 className="text-xl font-semibold text-white mb-2">
+                        No Positions Found
+                      </h3>
+                      <p className="text-gray-400">
+                        Start farming, staking, or providing liquidity to see
+                        your positions here
+                      </p>
+                    </div>
+                  ) : (
+                    <>
+                      {/* Summary Cards */}
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+                        <div className="glass-strong rounded-xl p-4 border border-white/10">
+                          <div className="text-xs text-gray-400 mb-1">
+                            Total Positions
+                          </div>
+                          <div className="text-2xl font-bold text-white">
+                            {positions.length}
+                          </div>
+                        </div>
+                        <div className="glass-strong rounded-xl p-4 border border-white/10">
+                          <div className="text-xs text-gray-400 mb-1">
+                            Protocols
+                          </div>
+                          <div className="text-2xl font-bold text-white">
+                            {
+                              new Set(positions.map((p) => p.protocol_id))
+                                .size
+                            }
+                          </div>
+                        </div>
+                        <div className="glass-strong rounded-xl p-4 border border-white/10">
+                          <div className="text-xs text-gray-400 mb-1">
+                            Total Value
+                          </div>
+                          <div className="text-2xl font-bold text-emerald-400">
+                            $
+                            {positions
+                              .reduce(
+                                (sum, p) =>
+                                  sum + (p.position.balance_usd || 0),
+                                0
+                              )
+                              .toLocaleString(undefined, {
+                                minimumFractionDigits: 2,
+                                maximumFractionDigits: 2,
+                              })}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Position Cards */}
+                      {positions.map((position, index) => (
+                        <div
+                          key={index}
+                          className={`glass-strong rounded-xl overflow-hidden border bg-gradient-to-br ${getProtocolColor(
+                            position.protocol_id
+                          )}`}
+                        >
+                          {/* Protocol Header */}
+                          <div className="p-5 border-b border-white/10">
+                            <div className="flex items-start justify-between">
+                              <div className="flex items-center gap-3">
+                                {position.protocol_logo ? (
+                                  <img
+                                    src={position.protocol_logo}
+                                    alt={position.protocol_name}
+                                    className="w-10 h-10 rounded-lg"
+                                    onError={(e) => {
+                                      e.currentTarget.style.display = "none";
+                                    }}
+                                  />
+                                ) : (
+                                  <div className="w-10 h-10 rounded-lg bg-white/10 flex items-center justify-center text-xl">
+                                    {getPositionIcon(position.position.label)}
+                                  </div>
+                                )}
+                                <div>
+                                  <h3 className="font-semibold text-white">
+                                    {position.protocol_name}
+                                  </h3>
+                                  <div className="flex items-center gap-2 mt-1">
+                                    <span className="text-xs px-2 py-0.5 rounded-md glass text-gray-300 capitalize">
+                                      {position.position.label}
+                                    </span>
+                                  </div>
+                                </div>
+                              </div>
+                              <a
+                                href={position.protocol_url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-xs text-primary-400 hover:text-primary-300"
+                              >
+                                Open App →
+                              </a>
+                            </div>
+                          </div>
+
+                          {/* Position Details */}
+                          <div className="p-5 space-y-4">
+                            {/* Total Value */}
+                            {position.position.balance_usd !== null && (
+                              <div className="flex items-center justify-between">
+                                <span className="text-sm text-gray-400">
+                                  Position Value
+                                </span>
+                                <span className="text-lg font-bold text-emerald-400">
+                                  $
+                                  {position.position.balance_usd.toLocaleString(
+                                    undefined,
+                                    {
+                                      minimumFractionDigits: 2,
+                                      maximumFractionDigits: 2,
+                                    }
+                                  )}
+                                </span>
+                              </div>
+                            )}
+
+                            {/* Tokens */}
+                            <div>
+                              <div className="text-xs text-gray-400 mb-2">
+                                Assets
+                              </div>
+                              <div className="space-y-2">
+                                {position.position.tokens
+                                  .filter(
+                                    (t) => t.token_type !== "defi-token"
+                                  )
+                                  .map((token, tidx) => (
+                                    <div
+                                      key={tidx}
+                                      className="flex items-center justify-between glass rounded-lg p-3"
+                                    >
+                                      <div className="flex items-center gap-2">
+                                        {token.logo && (
+                                          <img
+                                            src={token.logo}
+                                            alt={token.symbol}
+                                            className="w-6 h-6 rounded-full"
+                                            onError={(e) => {
+                                              e.currentTarget.style.display =
+                                                "none";
+                                            }}
+                                          />
+                                        )}
+                                        <div>
+                                          <div className="text-sm font-semibold text-white">
+                                            {token.symbol}
+                                          </div>
+                                          <div className="text-xs text-gray-400 capitalize">
+                                            {token.token_type.replace(
+                                              /-/g,
+                                              " "
+                                            )}
+                                          </div>
+                                        </div>
+                                      </div>
+                                      <div className="text-right">
+                                        <div className="text-sm font-semibold text-white">
+                                          {parseFloat(
+                                            token.balance_formatted
+                                          ).toLocaleString(undefined, {
+                                            maximumFractionDigits: 6,
+                                          })}
+                                        </div>
+                                        {token.usd_value !== undefined && token.usd_value !== null && (
+                                          <div className="text-xs text-gray-400">
+                                            $
+                                            {token.usd_value.toLocaleString(
+                                              undefined,
+                                              {
+                                                minimumFractionDigits: 2,
+                                                maximumFractionDigits: 2,
+                                              }
+                                            )}
+                                          </div>
+                                        )}
+                                      </div>
+                                    </div>
+                                  ))}
+                              </div>
+                            </div>
+
+                            {/* Position Details */}
+                            {position.position.position_details &&
+                              Object.keys(position.position.position_details)
+                                .length > 0 && (
+                                <div>
+                                  <div className="text-xs text-gray-400 mb-2">
+                                    Details
+                                  </div>
+                                  <div className="grid grid-cols-2 gap-2">
+                                    {Object.entries(
+                                      position.position.position_details
+                                    )
+                                      .filter(
+                                        ([key]) =>
+                                          ![
+                                            "reserve0",
+                                            "reserve1",
+                                            "factory",
+                                            "pair",
+                                          ].includes(key)
+                                      )
+                                      .map(([key, value]) => (
+                                        <div
+                                          key={key}
+                                          className="glass rounded-lg p-2"
+                                        >
+                                          <div className="text-xs text-gray-400 capitalize">
+                                            {key.replace(/_/g, " ")}
+                                          </div>
+                                          <div className="text-sm text-white font-medium">
+                                            {typeof value === "number"
+                                              ? value.toLocaleString(
+                                                  undefined,
+                                                  {
+                                                    maximumFractionDigits: 2,
+                                                  }
+                                                )
+                                              : String(value)}
+                                            {key.includes("percent") && "%"}
+                                          </div>
+                                        </div>
+                                      ))}
+                                  </div>
+                                </div>
+                              )}
+                          </div>
+                        </div>
+                      ))}
+                    </>
+                  )}
+                </div>
+
+                {/* AI Intelligence Panel */}
+                <div className="lg:col-span-1">
+                  <div className="sticky top-24">
+                    <PositionsIntelligence
+                      positions={positions}
+                      walletAddress={DEMO_ADDRESS}
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+          </main>
+        </div>
+      </SidebarInset>
+    </SidebarProvider>
+  );
+}
