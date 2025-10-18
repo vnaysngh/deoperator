@@ -3,7 +3,6 @@
 import {
   Sidebar,
   SidebarContent,
-  SidebarFooter,
   SidebarGroup,
   SidebarGroupContent,
   SidebarGroupLabel,
@@ -23,6 +22,8 @@ import {
   // HelpCircle
 } from "lucide-react";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
+import { cn } from "@/lib/utils";
 
 const menuItems = [
   { title: "Trade", icon: ArrowLeftRight, url: "/trade" },
@@ -39,14 +40,35 @@ const menuItems = [
 ];
  */
 export function AppSidebar() {
+  const pathname = usePathname();
+
+  const isActivePath = (url: string) => {
+    if (url === "/trade") {
+      return pathname === url || pathname === "/";
+    }
+    return pathname === url || pathname.startsWith(`${url}/`);
+  };
+
   return (
     <Sidebar collapsible="icon" className="border-r border-white/5">
       <SidebarHeader className="border-b border-white/5">
         <SidebarMenu>
           <SidebarMenuItem>
-            <SidebarMenuButton size="lg" className="hover:bg-white/5">
-              <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-primary-600 to-primary-700 flex items-center justify-center shadow-glow">
-                <span className="text-white font-bold text-lg">D</span>
+            <SidebarMenuButton
+              size="lg"
+              className="hover:bg-white/5"
+              style={{ gap: "0 rem" }}
+            >
+              <div className="flex h-10 w-10 flex-col items-start justify-center gap-1 px-1.5">
+                <span className="text-[10px] font-semibold uppercase tracking-[0.32em] text-primary-400">
+                  DE
+                </span>
+                <span className="flex items-center gap-1 text-[9px] font-medium tracking-[0.22em] text-white/80">
+                  <span className="text-primary-400/80 font-mono text-[11px] leading-none">
+                    ›
+                  </span>
+                  OP
+                </span>
               </div>
               <div className="flex flex-col gap-0.5 leading-none">
                 <span className="font-bold gradient-text">DeOperator</span>
@@ -64,19 +86,29 @@ export function AppSidebar() {
           </SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
-              {menuItems.map((item) => (
-                <SidebarMenuItem key={item.title}>
-                  <SidebarMenuButton
-                    asChild
-                    className="hover:bg-white/5 hover:text-primary-400 transition-colors"
-                  >
-                    <Link href={item.url}>
-                      <item.icon className="w-4 h-4" />
-                      <span>{item.title}</span>
-                    </Link>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              ))}
+              {menuItems.map((item) => {
+                const active = isActivePath(item.url);
+                return (
+                  <SidebarMenuItem key={item.title}>
+                    <SidebarMenuButton
+                      asChild
+                      isActive={active}
+                      className={cn(
+                        "hover:bg-white/5 hover:text-primary-400 transition-colors",
+                        "data-[active=true]:!bg-transparent data-[active=true]:!text-primary-400"
+                      )}
+                    >
+                      <Link
+                        href={item.url}
+                        aria-current={active ? "page" : undefined}
+                      >
+                        <item.icon className="w-4 h-4" />
+                        <span>{item.title}</span>
+                      </Link>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                );
+              })}
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
@@ -105,7 +137,7 @@ export function AppSidebar() {
         </SidebarGroup> */}
       </SidebarContent>
 
-      <SidebarFooter className="border-t border-white/5">
+      {/*  <SidebarFooter className="border-t border-white/5">
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton className="hover:bg-white/5">
@@ -121,7 +153,7 @@ export function AppSidebar() {
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
-      </SidebarFooter>
+      </SidebarFooter> */}
     </Sidebar>
   );
 }

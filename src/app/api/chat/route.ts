@@ -102,17 +102,16 @@ export async function POST(req: Request) {
       - Ethereum (chainId: 1) ✅
       - Arbitrum (chainId: 42161) ✅
       - BNB Chain (chainId: 56) ✅
-      - Polygon (chainId: 137) ✅
       - Base (chainId: 8453) ✅
 
       Token Support:
       - Supports thousands of verified tokens via curated lists and CoinGecko enrichment
-      - Popular tokens: WETH, USDC, USDT, DAI, WBTC, LINK, AAVE, ARB, MATIC, WBNB, cbETH, etc.
+      - Popular tokens: WETH, USDC, USDT, DAI, WBTC, LINK, AAVE, ARB, WBNB, cbETH, etc.
       - Bridged and wrapped assets exist across networks (e.g., WETH on Base, BTCB on BNB Chain). Always confirm the chain the user specifies.
 
       🔥 NATIVE CURRENCY SUPPORT:
-      - Native blockchain tokens (ETH on Ethereum/Arbitrum/Base, BNB on BNB Chain, MATIC on Polygon) are FULLY SUPPORTED
-      - When user asks to swap ETH, BNB, or MATIC (the native tokens), we handle it automatically
+      - Native blockchain tokens (ETH on Ethereum/Arbitrum/Base, BNB on BNB Chain) are FULLY SUPPORTED
+      - When user asks to swap ETH or BNB (the native tokens), we handle it automatically
       - Users can say "swap ETH to USDC" or "swap 1 ETH for USDC" - you understand they mean the native ETH
       - No need to ask for wrapped versions (WETH/WBNB) - we handle native tokens directly
 
@@ -181,7 +180,6 @@ export async function POST(req: Request) {
       - "ethereum", "eth", or "mainnet" → chainId: 1
       - "arbitrum" or "arb" → chainId: 42161
       - "bnb", "bsc", or "binance" → chainId: 56
-      - "polygon" or "matic" → chainId: 137
       - "base" → chainId: 8453
 
       NEVER assume a default chain. ALWAYS ask if not specified.
@@ -305,7 +303,7 @@ export async function POST(req: Request) {
         // Your existing custom tools
         getSwapQuote: tool({
           description:
-            "Get token information for a swap. Returns token addresses and decimals. The client-side SDK will fetch the actual quote. ONLY call this when you have confirmed: fromToken, toToken, amount, AND chainId with the user. Do NOT assume defaults. Supports Ethereum (1), BNB Chain (56), Polygon (137), Base (8453), and Arbitrum (42161).",
+            "Get token information for a swap. Returns token addresses and decimals. The client-side SDK will fetch the actual quote. ONLY call this when you have confirmed: fromToken, toToken, amount, AND chainId with the user. Do NOT assume defaults. Supports Ethereum (1), BNB Chain (56), Base (8453), and Arbitrum (42161).",
           inputSchema: z.object({
             fromToken: z
               .string()
@@ -323,7 +321,7 @@ export async function POST(req: Request) {
             chainId: z
               .number()
               .describe(
-                "Chain ID - REQUIRED, must be explicitly provided by user. 1=Ethereum, 56=BNB, 137=Polygon, 8453=Base, 42161=Arbitrum. NO DEFAULT - always ask if not specified"
+                "Chain ID - REQUIRED, must be explicitly provided by user. 1=Ethereum, 56=BNB, 8453=Base, 42161=Arbitrum. NO DEFAULT - always ask if not specified"
               )
           }),
           execute: async ({ fromToken, toToken, amount, chainId }) => {
@@ -460,7 +458,7 @@ export async function POST(req: Request) {
             chainId: z
               .number()
               .describe(
-                "Chain ID - REQUIRED. 1=Ethereum, 56=BNB, 137=Polygon, 8453=Base, 42161=Arbitrum"
+                "Chain ID - REQUIRED. 1=Ethereum, 56=BNB, 8453=Base, 42161=Arbitrum"
               )
           }),
           execute: async ({ fromToken, toToken, amount, chainId }) => {
@@ -586,7 +584,7 @@ export async function POST(req: Request) {
               .number()
               .optional()
               .describe(
-                "Optional chain ID to highlight the contract on a specific network (1=Ethereum, 56=BNB, 137=Polygon, 8453=Base, 42161=Arbitrum)"
+                "Optional chain ID to highlight the contract on a specific network (1=Ethereum, 56=BNB, 8453=Base, 42161=Arbitrum)"
               )
           }),
           execute: async ({ symbol, chainId }) => {
@@ -804,7 +802,7 @@ export async function POST(req: Request) {
         }),
         getTokenInfo: tool({
           description:
-            "Get information about a specific token including its address and decimals. Supports tokens on Ethereum, Arbitrum, BNB Chain, Polygon, and Base.",
+            "Get information about a specific token including its address and decimals. Supports tokens on Ethereum, Arbitrum, BNB Chain, and Base.",
           inputSchema: z.object({
             symbol: z
               .string()
@@ -813,7 +811,7 @@ export async function POST(req: Request) {
               .number()
               .optional()
               .describe(
-                "Chain ID: 1=Ethereum, 56=BNB, 137=Polygon, 8453=Base, 42161=Arbitrum (default: 42161)"
+                "Chain ID: 1=Ethereum, 56=BNB, 8453=Base, 42161=Arbitrum (default: 42161)"
               )
           }),
           execute: async ({ symbol, chainId = 42161 }) => {
@@ -852,7 +850,7 @@ export async function POST(req: Request) {
             chainId: z
               .number()
               .describe(
-                "Chain ID - REQUIRED, must be explicitly provided by user. 1=Ethereum, 56=BNB, 137=Polygon, 8453=Base, 42161=Arbitrum. NO DEFAULT - always ask if not specified"
+                "Chain ID - REQUIRED, must be explicitly provided by user. 1=Ethereum, 56=BNB, 8453=Base, 42161=Arbitrum. NO DEFAULT - always ask if not specified"
               )
           }),
           execute: async ({ token, chainId }) => {
@@ -979,7 +977,7 @@ export async function POST(req: Request) {
             chainId: z
               .number()
               .describe(
-                "Chain ID - REQUIRED. 1=Ethereum, 56=BNB, 137=Polygon, 8453=Base, 42161=Arbitrum. Ask user if not specified."
+                "Chain ID - REQUIRED. 1=Ethereum, 56=BNB, 8453=Base, 42161=Arbitrum. Ask user if not specified."
               ),
             minUsdValue: z
               .number()
@@ -1104,7 +1102,7 @@ export async function POST(req: Request) {
             chainId: z
               .number()
               .describe(
-                "Chain ID - REQUIRED. 1=Ethereum, 56=BNB, 137=Polygon, 8453=Base, 42161=Arbitrum. Ask user if not specified."
+                "Chain ID - REQUIRED. 1=Ethereum, 56=BNB, 8453=Base, 42161=Arbitrum. Ask user if not specified."
               )
           }),
           execute: async ({ tokens, chainId }) => {
@@ -1287,7 +1285,7 @@ export async function POST(req: Request) {
             chainId: z
               .number()
               .describe(
-                "Chain ID - REQUIRED. 1=Ethereum, 56=BNB, 137=Polygon, 8453=Base, 42161=Arbitrum"
+                "Chain ID - REQUIRED. 1=Ethereum, 56=BNB, 8453=Base, 42161=Arbitrum"
               )
           }),
           execute: async ({ fromToken, toToken, chainId }) => {

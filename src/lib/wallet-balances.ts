@@ -71,7 +71,6 @@ async function fetchTokenBalancesFromIndexer(
     const chainMap: Record<number, string> = {
       1: 'eth',
       56: 'bsc',
-      137: 'polygon',
       8453: 'base',
       42161: 'arbitrum'
     }

@@ -22,8 +22,8 @@ function getCowChainId(chainId: number): SupportedChainId {
       return SupportedChainId.MAINNET;
     case 56:
       return SupportedChainId.BNB;
-    case 137:
-      return SupportedChainId.POLYGON;
+    // case 137:
+    //   return SupportedChainId.POLYGON;
     case 100:
       return SupportedChainId.GNOSIS_CHAIN;
     case 42161:

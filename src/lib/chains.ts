@@ -1,5 +1,5 @@
 import type { Chain } from "viem";
-import { arbitrum, base, bsc, mainnet, polygon } from "viem/chains";
+import { arbitrum, base, bsc, mainnet /*, polygon */ } from "viem/chains";
 
 // Chain IDs for supported networks
 export const CHAIN_IDS = {
@@ -14,7 +14,7 @@ export const CHAIN_IDS = {
 export const CHAIN_NAMES: Record<number, string> = {
   [CHAIN_IDS.ETHEREUM]: "Ethereum",
   [CHAIN_IDS.BNB]: "BNB Chain",
-  [CHAIN_IDS.POLYGON]: "Polygon",
+  // [CHAIN_IDS.POLYGON]: "Polygon",
   [CHAIN_IDS.BASE]: "Base",
   [CHAIN_IDS.ARBITRUM]: "Arbitrum"
 };
@@ -32,9 +32,9 @@ export function detectChainFromQuery(query: string): number {
   if (lowerQuery.includes("bnb") || lowerQuery.includes("bsc") || lowerQuery.includes("binance")) {
     return CHAIN_IDS.BNB;
   }
-  if (lowerQuery.includes("polygon") || lowerQuery.includes("matic")) {
-    return CHAIN_IDS.POLYGON;
-  }
+  // if (lowerQuery.includes("polygon") || lowerQuery.includes("matic")) {
+  //   return CHAIN_IDS.POLYGON;
+  // }
   if (lowerQuery.includes("base")) {
     return CHAIN_IDS.BASE;
   }
@@ -54,8 +54,6 @@ export function getViemChain(chainId: number): Chain | undefined {
       return mainnet;
     case CHAIN_IDS.BNB:
       return bsc;
-    case CHAIN_IDS.POLYGON:
-      return polygon;
     case CHAIN_IDS.BASE:
       return base;
     case CHAIN_IDS.ARBITRUM:

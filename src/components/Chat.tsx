@@ -23,7 +23,7 @@ let latestQuoteTimestamp = 0;
 const quoteListeners = new Set<() => void>();
 
 function notifyQuoteChange() {
-  quoteListeners.forEach(listener => listener());
+  quoteListeners.forEach((listener) => listener());
 }
 
 export function Chat() {
@@ -31,10 +31,12 @@ export function Chat() {
   const { address } = useAccount();
   const publicClient = usePublicClient();
   const { data: walletClient } = useWalletClient();
+  const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
 
   // Use a ref to always get the latest address value
   const addressRef = useRef<string | undefined>(address);
   addressRef.current = address;
+  const copyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const { messages, sendMessage, status } = useChat({
     transport: new DefaultChatTransport({
@@ -55,6 +57,7 @@ export function Chat() {
       }
     })
   });
+  type ChatMessage = (typeof messages)[number];
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -64,12 +67,43 @@ export function Chat() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
 
+  const handleCopyMessage = useCallback(async (message: ChatMessage) => {
+    const text = message.parts
+      .filter((part) => part.type === "text")
+      .map((part) => part.text)
+      .join("")
+      .trim();
+
+    if (!text) return;
+
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedMessageId(message.id);
+      if (copyTimeoutRef.current) {
+        clearTimeout(copyTimeoutRef.current);
+      }
+      copyTimeoutRef.current = setTimeout(() => {
+        setCopiedMessageId(null);
+      }, 1200);
+    } catch (copyError) {
+      console.error("[CLIENT] Failed to copy message:", copyError);
+    }
+  }, []);
+
   useEffect(() => {
     scrollToBottom();
     if (inputRef.current && address && status !== "streaming") {
       inputRef.current.focus();
     }
   }, [messages, address, status]);
+
+  useEffect(() => {
+    return () => {
+      if (copyTimeoutRef.current) {
+        clearTimeout(copyTimeoutRef.current);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     // Find the most recent user-authored message
@@ -124,7 +158,7 @@ export function Chat() {
                 disabled={!address}
                 className="w-full glass rounded-lg px-3 sm:px-4 py-2 text-gray-300 hover:bg-white/10 transition-colors cursor-pointer text-left disabled:cursor-not-allowed disabled:opacity-50"
               >
-                &quot;Swap 1 BNB for USDC on BNB Chain&quot;
+                Swap 1 BNB for USDC on BNB Chain
               </button>
               <button
                 onClick={() => {
@@ -135,29 +169,33 @@ export function Chat() {
                 disabled={!address}
                 className="w-full glass rounded-lg px-3 sm:px-4 py-2 text-gray-300 hover:bg-white/10 transition-colors cursor-pointer text-left disabled:cursor-not-allowed disabled:opacity-50"
               >
-                &quot;What&apos;s the price of CAKE?&quot;
+                What&apos;s the price of CAKE?
               </button>
               <button
                 onClick={() => {
                   if (address) {
-                    sendMessage({ text: "Get me a quote for 100 USDC to DAI on Arbitrum" });
+                    sendMessage({
+                      text: "Get me a quote for 100 USDC to DAI on Arbitrum"
+                    });
                   }
                 }}
                 disabled={!address}
                 className="w-full glass rounded-lg px-3 sm:px-4 py-2 text-gray-300 hover:bg-white/10 transition-colors cursor-pointer text-left disabled:cursor-not-allowed disabled:opacity-50"
               >
-                &quot;Get me a quote for 100 USDC to DAI on Arbitrum&quot;
+                Get me a quote for 100 USDC to DAI on Arbitrum
               </button>
               <button
                 onClick={() => {
                   if (address) {
-                    sendMessage({ text: "Show me the best rate for 0.5 ETH to USDT" });
+                    sendMessage({
+                      text: "Show me the best rate for 0.5 ETH to USDT"
+                    });
                   }
                 }}
                 disabled={!address}
                 className="w-full glass rounded-lg px-3 sm:px-4 py-2 text-gray-300 hover:bg-white/10 transition-colors cursor-pointer text-left disabled:cursor-not-allowed disabled:opacity-50"
               >
-                &quot;Show me the best rate for 0.5 ETH to USDT&quot;
+                Show me the best rate for 0.5 ETH to USDT
               </button>
             </div>
           </div>
@@ -171,8 +209,22 @@ export function Chat() {
             }`}
           >
             <div
-              className={`max-w-[85%] sm:max-w-[80%] rounded-2xl px-3 sm:px-4 py-2 sm:py-3 text-gray-200 bg-transparent`}
+              className={`relative group max-w-[85%] sm:max-w-[80%] rounded-2xl px-3 sm:px-4 py-2 sm:py-3 text-gray-200 bg-transparent`}
             >
+              {message.role === "user" && (
+                <button
+                  type="button"
+                  onClick={() => handleCopyMessage(message)}
+                  aria-label="Copy message"
+                  className="absolute -right-3 -top-3 opacity-0 group-hover:opacity-100 transition-opacity text-gray-400 hover:text-white bg-black/70 border border-white/10 rounded-full p-1"
+                >
+                  {copiedMessageId === message.id ? (
+                    <CheckIcon className="w-3.5 h-3.5" />
+                  ) : (
+                    <CopyIcon className="w-3.5 h-3.5" />
+                  )}
+                </button>
+              )}
               <div className="text-xs sm:text-sm whitespace-pre-wrap break-words leading-relaxed">
                 {message.parts.map((part, index) => {
                   if (part.type === "text") {
@@ -252,7 +304,15 @@ export function Chat() {
                                 </div>
                                 <div className="space-y-2">
                                   {output.balances.map(
-                                    (bal: { symbol: string; name: string; balance: string; usdValue?: number }, i: number) => (
+                                    (
+                                      bal: {
+                                        symbol: string;
+                                        name: string;
+                                        balance: string;
+                                        usdValue?: number;
+                                      },
+                                      i: number
+                                    ) => (
                                       <div
                                         key={i}
                                         className="flex items-center justify-between p-2 rounded-lg bg-white/5 hover:bg-white/10 transition-colors"
@@ -467,6 +527,39 @@ export function Chat() {
   );
 }
 
+function CopyIcon(props: React.SVGProps<SVGSVGElement>) {
+  return (
+    <svg
+      viewBox="0 0 20 20"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      {...props}
+    >
+      <rect x="7" y="7" width="9" height="9" rx="2" />
+      <path d="M4 13V5a2 2 0 0 1 2-2h8" />
+    </svg>
+  );
+}
+
+function CheckIcon(props: React.SVGProps<SVGSVGElement>) {
+  return (
+    <svg
+      viewBox="0 0 20 20"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      {...props}
+    >
+      <path d="M16 6 8.5 13.5 5 10" />
+    </svg>
+  );
+}
+
 /**
  * Component that fetches user's entire balance and then displays quote
  * Used for "swap my whole balance" requests
@@ -518,12 +611,11 @@ function EntireBalanceQuoteDisplay({
         <div className="glass-strong rounded-lg p-4">
           <div className="flex items-center gap-2 mb-2">
             <div className="w-2 h-2 rounded-full bg-amber-500"></div>
-            <span className="text-xs font-semibold text-amber-400">
-              Notice
-            </span>
+            <span className="text-xs font-semibold text-amber-400">Notice</span>
           </div>
           <div className="text-white text-sm">
-            You don&apos;t have any {tokenInfo.fromToken} to swap on {tokenInfo.chain}.
+            You don&apos;t have any {tokenInfo.fromToken} to swap on{" "}
+            {tokenInfo.chain}.
           </div>
         </div>
       </div>
@@ -545,7 +637,8 @@ function EntireBalanceQuoteDisplay({
     <>
       <div className="mt-3 pt-3 border-t border-white/10">
         <div className="text-sm text-gray-300">
-          Your {tokenInfo.fromToken} balance: {parseFloat(balanceAmount).toFixed(6)} {tokenInfo.fromToken}
+          Your {tokenInfo.fromToken} balance:{" "}
+          {parseFloat(balanceAmount).toFixed(6)} {tokenInfo.fromToken}
         </div>
       </div>
       <QuoteDisplay
@@ -582,6 +675,7 @@ function QuoteDisplay({
   const [countdown, setCountdown] = useState(30);
   const [orderInProgress, setOrderInProgress] = useState(false);
   const [orderCompleted, setOrderCompleted] = useState(false);
+  const [isCollapsed, setIsCollapsed] = useState(false);
 
   const {
     amount,
@@ -607,6 +701,16 @@ function QuoteDisplay({
     };
   }, []);
 
+  const isLatestQuote = quoteTimestamp === latestQuoteTimestamp;
+
+  useEffect(() => {
+    if (!isLatestQuote) {
+      setIsCollapsed(true);
+    } else {
+      setIsCollapsed(false);
+    }
+  }, [isLatestQuote]);
+
   const fetchQuote = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -625,12 +729,9 @@ function QuoteDisplay({
       try {
         const { getPublicClient } = await import("wagmi/actions");
         const { wagmiAdapter } = await import("@/lib/wagmi");
-        activePublicClient = await getPublicClient(
-          wagmiAdapter.wagmiConfig,
-          {
-            chainId
-          }
-        );
+        activePublicClient = await getPublicClient(wagmiAdapter.wagmiConfig, {
+          chainId
+        });
       } catch (publicClientError) {
         console.error(
           "[CLIENT] Unable to resolve public client:",
@@ -653,13 +754,10 @@ function QuoteDisplay({
       try {
         const { getWalletClient } = await import("wagmi/actions");
         const { wagmiAdapter } = await import("@/lib/wagmi");
-        activeWalletClient = await getWalletClient(
-          wagmiAdapter.wagmiConfig,
-          {
-            account: address,
-            assertChainId: false
-          }
-        );
+        activeWalletClient = await getWalletClient(wagmiAdapter.wagmiConfig, {
+          account: address,
+          assertChainId: false
+        });
       } catch (walletClientError) {
         console.error(
           "[CLIENT] Unable to resolve wallet client:",
@@ -740,10 +838,7 @@ function QuoteDisplay({
           buyAmountAfterNetworkCosts,
           toTokenDecimals
         ),
-        feeAmount: formatQuoteAmount(
-          networkFeeInSellToken,
-          fromTokenDecimals
-        ),
+        feeAmount: formatQuoteAmount(networkFeeInSellToken, fromTokenDecimals),
         slippagePercent,
         postSwapOrderFromQuote: quoteResponse.postSwapOrderFromQuote
       });
@@ -772,7 +867,9 @@ function QuoteDisplay({
         activeWalletClient.chain.id !== chainId
       ) {
         setError(
-          `Quote fetched while your wallet is on a different network. You can review the numbers, but switch to ${chain ?? "the requested chain"} before creating the order.`
+          `Quote fetched while your wallet is on a different network. You can review the numbers, but switch to ${
+            chain ?? "the requested chain"
+          } before creating the order.`
         );
       } else {
         setError(
@@ -802,18 +899,19 @@ function QuoteDisplay({
 
   // Countdown timer with auto-refresh
   useEffect(() => {
-    // Only run timer if:
-    // 1. Not loading, no error, and quote exists
-    // 2. This is the latest quote (not an older quote)
-    // 3. No order transaction in progress
-    // 4. Order has not been completed
-    const isLatest = quoteTimestamp === latestQuoteTimestamp;
-    if (loading || error || !quote || !isLatest || orderInProgress || orderCompleted) return;
+    if (
+      loading ||
+      error ||
+      !quote ||
+      !isLatestQuote ||
+      orderInProgress ||
+      orderCompleted
+    )
+      return;
 
     const timer = setInterval(() => {
       setCountdown((prev) => {
         if (prev <= 1) {
-          // Double-check we're still the latest before refreshing
           if (quoteTimestamp === latestQuoteTimestamp) {
             fetchQuote();
           }
@@ -824,7 +922,16 @@ function QuoteDisplay({
     }, 1000);
 
     return () => clearInterval(timer);
-  }, [fetchQuote, loading, error, quote, orderInProgress, orderCompleted, quoteTimestamp]);
+  }, [
+    fetchQuote,
+    loading,
+    error,
+    quote,
+    orderInProgress,
+    orderCompleted,
+    quoteTimestamp,
+    isLatestQuote
+  ]);
 
   if (loading) {
     return (
@@ -860,9 +967,6 @@ function QuoteDisplay({
     );
   }
 
-  // Check if this is the latest quote
-  const isLatestQuote = quoteTimestamp === latestQuoteTimestamp;
-
   return (
     <div className="mt-3 pt-3 border-t border-white/10">
       <div className="glass-strong rounded-lg p-4 space-y-2">
@@ -880,71 +984,91 @@ function QuoteDisplay({
               </span>
             )}
             {isLatestQuote && (
-              <span
-                className="text-xs px-2 py-1 glass rounded-md text-gray-400 cursor-help relative group"
-              >
+              <span className="text-xs px-2 py-1 glass rounded-md text-gray-400 cursor-help relative group/timer">
                 {countdown}s
-                <span className="invisible group-hover:visible absolute left-1/2 -translate-x-1/2 bottom-full mb-2 px-2 py-1 text-xs text-white bg-gray-900 rounded-md whitespace-nowrap z-10 pointer-events-none">
+                <span className="invisible group-hover/timer:visible absolute left-1/2 -translate-x-1/2 bottom-full mb-2 px-2 py-1 text-xs text-white bg-gray-900 rounded-md whitespace-nowrap z-10 pointer-events-none">
                   Quote refreshes in {countdown} seconds
                   <span className="absolute left-1/2 -translate-x-1/2 top-full w-0 h-0 border-4 border-transparent border-t-gray-900"></span>
                 </span>
               </span>
             )}
             {!isLatestQuote && (
-              <span className="text-xs px-2 py-1 bg-amber-500/20 rounded-md text-amber-400">
-                Expired
-              </span>
+              <div className="flex items-center gap-2">
+                <span className="text-xs px-2 py-1 bg-amber-500/20 rounded-md text-amber-400">
+                  Expired
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setIsCollapsed((prev) => !prev)}
+                  className="text-xs text-gray-400 hover:text-gray-200 transition-colors underline-offset-2"
+                >
+                  {isCollapsed ? "Show details" : "Hide details"}
+                </button>
+              </div>
             )}
           </div>
         </div>
-        <div className="grid grid-cols-2 gap-3 text-sm">
-          <div>
-            <div className="text-gray-500 text-xs">From</div>
-            <div className="text-white font-semibold">
-              {tokenInfo.amount} {tokenInfo.fromToken}
-            </div>
-          </div>
-          <div>
-            <div className="text-gray-500 text-xs">To (est.)</div>
-            <div className="text-white font-semibold">
-              {quote.buyAmount} {tokenInfo.toToken}
-            </div>
-          </div>
-          <div>
-            <div className="text-gray-500 text-xs">Network Fee</div>
-            <div className="text-white">
-              {quote.feeAmount} {tokenInfo.fromToken}
-            </div>
-          </div>
-          <div>
-            <div className="text-gray-500 text-xs">Slippage</div>
-            <div className="text-white">{quote.slippagePercent}%</div>
-          </div>
-          <div className="col-span-2">
-            <div className="text-gray-500 text-xs">Receive (incl. costs)</div>
-            <div className="text-white font-semibold">
-              {quote.buyAmountAfterFees} {tokenInfo.toToken}
-            </div>
-          </div>
-        </div>
-        <div className="pt-2 mt-2 border-t border-white/5">
-          <div className="text-gray-500 text-xs">Route</div>
-          <div className="text-white text-sm">
-            {tokenInfo.fromToken} → [CoW Protocol Batch Auction] →{" "}
+        {isCollapsed ? (
+          <div className="pt-1 text-xs text-gray-400 border-t border-white/5">
+            {tokenInfo.amount} {tokenInfo.fromToken} → {quote.buyAmount}{" "}
             {tokenInfo.toToken}
           </div>
-        </div>
+        ) : (
+          <>
+            <div className="grid grid-cols-2 gap-3 text-sm">
+              <div>
+                <div className="text-gray-500 text-xs">From</div>
+                <div className="text-white font-semibold">
+                  {tokenInfo.amount} {tokenInfo.fromToken}
+                </div>
+              </div>
+              <div>
+                <div className="text-gray-500 text-xs">To (est.)</div>
+                <div className="text-white font-semibold">
+                  {quote.buyAmount} {tokenInfo.toToken}
+                </div>
+              </div>
+              <div>
+                <div className="text-gray-500 text-xs">Network Fee</div>
+                <div className="text-white">
+                  {quote.feeAmount} {tokenInfo.fromToken}
+                </div>
+              </div>
+              <div>
+                <div className="text-gray-500 text-xs">Slippage</div>
+                <div className="text-white">{quote.slippagePercent}%</div>
+              </div>
+              <div className="col-span-2">
+                <div className="text-gray-500 text-xs">
+                  Receive (incl. costs)
+                </div>
+                <div className="text-white font-semibold">
+                  {quote.buyAmountAfterFees} {tokenInfo.toToken}
+                </div>
+              </div>
+            </div>
+            <div className="pt-2 mt-2 border-t border-white/5">
+              <div className="text-gray-500 text-xs">Route</div>
+              <div className="text-white text-sm">
+                {tokenInfo.fromToken} → [CoW Protocol Batch Auction] →{" "}
+                {tokenInfo.toToken}
+              </div>
+            </div>
 
-        {/* Create Order Button */}
-        <div className="pt-3 mt-3 border-t border-white/5">
-          <CreateOrderButton
-            tokenInfo={tokenInfo}
-            postSwapOrderFromQuote={quote.postSwapOrderFromQuote}
-            onOrderStatusChange={setOrderInProgress}
-            onOrderCompleted={() => setOrderCompleted(true)}
-            isLatestQuote={isLatestQuote}
-          />
-        </div>
+            {/* Create Order Button */}
+            {quote.postSwapOrderFromQuote && (
+              <div className="pt-3 mt-3 border-t border-white/5">
+                <CreateOrderButton
+                  tokenInfo={tokenInfo}
+                  postSwapOrderFromQuote={quote.postSwapOrderFromQuote}
+                  onOrderStatusChange={setOrderInProgress}
+                  onOrderCompleted={() => setOrderCompleted(true)}
+                  isLatestQuote={isLatestQuote}
+                />
+              </div>
+            )}
+          </>
+        )}
       </div>
     </div>
   );
@@ -993,12 +1117,9 @@ function OrderSubmit({
         try {
           const { getPublicClient } = await import("wagmi/actions");
           const { wagmiAdapter } = await import("@/lib/wagmi");
-          activePublicClient = await getPublicClient(
-            wagmiAdapter.wagmiConfig,
-            {
-              chainId: tokenInfo.chainId
-            }
-          );
+          activePublicClient = await getPublicClient(wagmiAdapter.wagmiConfig, {
+            chainId: tokenInfo.chainId
+          });
         } catch (publicClientError) {
           console.error(
             "[CLIENT] Unable to resolve public client:",
@@ -1021,13 +1142,10 @@ function OrderSubmit({
         try {
           const { getWalletClient } = await import("wagmi/actions");
           const { wagmiAdapter } = await import("@/lib/wagmi");
-          activeWalletClient = await getWalletClient(
-            wagmiAdapter.wagmiConfig,
-            {
-              account: address,
-              chainId: tokenInfo.chainId
-            }
-          );
+          activeWalletClient = await getWalletClient(wagmiAdapter.wagmiConfig, {
+            account: address,
+            chainId: tokenInfo.chainId
+          });
         } catch (walletClientError) {
           console.error(
             "[CLIENT] Unable to resolve wallet client for order submission:",
@@ -1172,8 +1290,7 @@ function CreateOrderButton({
         NATIVE_CURRENCY_ADDRESS.toLowerCase());
 
   const walletChainId = walletClient?.chain?.id;
-  const expectedChainLabel =
-    tokenInfo.chain ?? `chain ID ${tokenInfo.chainId}`;
+  const expectedChainLabel = tokenInfo.chain ?? `chain ID ${tokenInfo.chainId}`;
   const chainMismatch =
     walletChainId !== undefined && walletChainId !== tokenInfo.chainId;
 

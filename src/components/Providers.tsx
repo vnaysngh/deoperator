@@ -11,7 +11,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createAppKit } from "@reown/appkit/react";
 import { ErrorBoundary } from "./ErrorBoundary";
 import { networks, projectId, wagmiAdapter } from "@/lib/wagmi";
-import { arbitrum, base, bsc, mainnet, polygon } from "@reown/appkit/networks";
+import { arbitrum, base, bsc, mainnet /*, polygon */ } from "@reown/appkit/networks";
 
 type ProvidersProps = {
   children: ReactNode;
@@ -47,7 +47,7 @@ function ensureAppKitInstance() {
   const modal = createAppKit({
     adapters: [wagmiAdapter],
     projectId,
-    networks: [mainnet, bsc, polygon, base, arbitrum],
+    networks: [mainnet, bsc, /* polygon, */ base, arbitrum],
     defaultNetwork: networks[0],
     metadata,
     features: {

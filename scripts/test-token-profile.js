@@ -15,7 +15,7 @@ const PLATFORM_TO_CHAIN_ID = {
   ethereum: 1,
   "arbitrum-one": 42161,
   "binance-smart-chain": 56,
-  "polygon-pos": 137,
+  // "polygon-pos": 137,
   base: 8453
 };
 

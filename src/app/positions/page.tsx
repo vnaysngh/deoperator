@@ -39,7 +39,6 @@ interface Position {
 const getChainName = (chainId: number) => {
   const chainMap: Record<number, string> = {
     1: "eth",
-    137: "polygon",
     56: "bsc",
     43114: "avalanche",
     250: "fantom",

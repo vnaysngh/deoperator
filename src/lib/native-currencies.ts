@@ -35,13 +35,13 @@ export const NATIVE_CURRENCIES: Record<number, NativeCurrency> = {
     aliases: ['bnb', 'binance coin', 'binance token'],
   },
   // Polygon
-  137: {
-    symbol: 'MATIC',
-    name: 'Matic',
-    decimals: 18,
-    chainId: 137,
-    aliases: ['matic', 'polygon', 'pol'],
-  },
+  // 137: {
+  //   symbol: 'MATIC',
+  //   name: 'Matic',
+  //   decimals: 18,
+  //   chainId: 137,
+  //   aliases: ['matic', 'polygon', 'pol'],
+  // },
   // Base
   8453: {
     symbol: 'ETH',

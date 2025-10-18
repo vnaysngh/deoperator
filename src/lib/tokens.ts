@@ -37,7 +37,7 @@ interface TokenList {
 const SUPPORTED_CHAIN_IDS = [
   CHAIN_IDS.ETHEREUM,
   CHAIN_IDS.BNB,
-  CHAIN_IDS.POLYGON,
+  // CHAIN_IDS.POLYGON,
   CHAIN_IDS.BASE,
   CHAIN_IDS.ARBITRUM
 ]
@@ -105,7 +105,7 @@ async function fetchTokenLists(): Promise<TokenCache> {
 
     console.log('[TOKENS] Uniswap list counts', {
       ethereum: Object.keys(tokens[CHAIN_IDS.ETHEREUM]).length,
-      polygon: Object.keys(tokens[CHAIN_IDS.POLYGON]).length,
+      // polygon: Object.keys(tokens[CHAIN_IDS.POLYGON]).length,
       base: Object.keys(tokens[CHAIN_IDS.BASE]).length,
       arbitrum: Object.keys(tokens[CHAIN_IDS.ARBITRUM]).length,
       bnb: Object.keys(tokens[CHAIN_IDS.BNB]).length
@@ -142,13 +142,13 @@ function getFallbackTokens(): TokenCache {
     CAKE: new Token(56, '0x0E09FaBB73Bd3Ade0a17ECC321fD13a19e81cE82', 18, 'CAKE', 'PancakeSwap Token')
   }
 
-  map[CHAIN_IDS.POLYGON] = {
-    WMATIC: new Token(137, '0x0d500B1d8E8eF31E21C99d1Db9A6444d3ADf1270', 18, 'WMATIC', 'Wrapped MATIC'),
-    USDC: new Token(137, '0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174', 6, 'USDC', 'USD Coin'),
-    USDT: new Token(137, '0xc2132D05D31c914a87C6611C10748AEb04B58e8F', 6, 'USDT', 'Tether USD'),
-    DAI: new Token(137, '0x8f3Cf7ad23Cd3CaDbD9735AFf958023239c6A063', 18, 'DAI', 'Dai Stablecoin'),
-    WETH: new Token(137, '0x7ceB23fD6bC0adD59E62ac25578270cFf1b9f619', 18, 'WETH', 'Wrapped Ether')
-  }
+  // map[CHAIN_IDS.POLYGON] = {
+  //   WMATIC: new Token(137, '0x0d500B1d8E8eF31E21C99d1Db9A6444d3ADf1270', 18, 'WMATIC', 'Wrapped MATIC'),
+  //   USDC: new Token(137, '0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174', 6, 'USDC', 'USD Coin'),
+  //   USDT: new Token(137, '0xc2132D05D31c914a87C6611C10748AEb04B58e8F', 6, 'USDT', 'Tether USD'),
+  //   DAI: new Token(137, '0x8f3Cf7ad23Cd3CaDbD9735AFf958023239c6A063', 18, 'DAI', 'Dai Stablecoin'),
+  //   WETH: new Token(137, '0x7ceB23fD6bC0adD59E62ac25578270cFf1b9f619', 18, 'WETH', 'Wrapped Ether')
+  // }
 
   map[CHAIN_IDS.BASE] = {
     WETH: new Token(8453, '0x4200000000000000000000000000000000000006', 18, 'WETH', 'Wrapped Ether'),
@@ -320,9 +320,9 @@ export function normalizeTokenSymbol(input: string, chainId: number): string {
     if (normalized === 'ETHEREUM' || normalized === 'ETH') return 'WETH'
   }
 
-  if (chainId === CHAIN_IDS.POLYGON && normalized === 'ETH') {
-    return 'WETH'
-  }
+  // if (chainId === CHAIN_IDS.POLYGON && normalized === 'ETH') {
+  //   return 'WETH'
+  // }
 
   return variations[normalized] || normalized
 }

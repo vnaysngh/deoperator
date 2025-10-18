@@ -59,7 +59,7 @@ NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID=your_project_id
 # Optional RPC overrides (defaults fall back to public RPCs)
 NEXT_PUBLIC_MAINNET_RPC_URL=https://mainnet.infura.io/v3/YOUR_PROJECT_ID
 NEXT_PUBLIC_BSC_RPC_URL=https://bsc-dataseed1.binance.org
-NEXT_PUBLIC_POLYGON_RPC_URL=https://polygon-rpc.com
+# NEXT_PUBLIC_POLYGON_RPC_URL=https://polygon-rpc.com
 NEXT_PUBLIC_BASE_RPC_URL=https://mainnet.base.org
 NEXT_PUBLIC_ARBITRUM_RPC_URL=https://arbitrum-one.public.blastapi.io
 

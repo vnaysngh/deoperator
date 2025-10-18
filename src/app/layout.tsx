@@ -6,7 +6,7 @@ import { Providers } from "@/components/Providers";
 export const metadata: Metadata = {
   title: "DeOperator | AI-Powered CoW Protocol Trading",
   description:
-    "Swap tokens across Ethereum, BNB, Polygon, Base, and Arbitrum using natural language with CoW Protocol."
+    "Swap tokens across Ethereum, BNB, Base, and Arbitrum using natural language with CoW Protocol."
 };
 
 export default function RootLayout({
