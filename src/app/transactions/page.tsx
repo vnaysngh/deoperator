@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
 import { useAccount } from "wagmi";
+import { useInfiniteQuery } from "@tanstack/react-query";
 import { WalletConnect } from "@/components/WalletConnect";
 import { AppSidebar } from "@/components/app-sidebar";
 import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar";
@@ -31,86 +31,73 @@ interface Transaction {
   transaction_fee?: string;
 }
 
+const getChainName = (chainId: number) => {
+  const chainMap: Record<number, string> = {
+    1: "eth",
+    137: "polygon",
+    56: "bsc",
+    43114: "avalanche",
+    250: "fantom",
+    42161: "arbitrum",
+    10: "optimism",
+  };
+  return chainMap[chainId] || "eth";
+};
+
+const fetchTransactions = async (
+  address: string,
+  chainId: number,
+  cursor?: string
+) => {
+  const chainName = getChainName(chainId);
+  const cursorParam = cursor ? `&cursor=${cursor}` : "";
+  console.log("[TRANSACTIONS] Fetching transactions for:", address, "chain:", chainName);
+
+  const response = await fetch(
+    `/api/transactions?address=${address}&chain=${chainName}&limit=25${cursorParam}`
+  );
+
+  console.log("[TRANSACTIONS] Response status:", response.status);
+
+  if (!response.ok) {
+    const errorData = await response.json();
+    console.error("[TRANSACTIONS] Error response:", errorData);
+    throw new Error(errorData.error || "Failed to fetch transactions");
+  }
+
+  const data = await response.json();
+  console.log("[TRANSACTIONS] Fetched data:", data);
+  return {
+    transactions: data.transactions || [],
+    nextCursor: data.cursor || undefined,
+  };
+};
+
 export default function TransactionsPage() {
   const { address, chain } = useAccount();
-  const [transactions, setTransactions] = useState<Transaction[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [cursor, setCursor] = useState<string | null>(null);
-  const [hasMore, setHasMore] = useState(false);
 
-  useEffect(() => {
-    if (address && chain) {
-      // Reset pagination and fetch from beginning
-      setCursor(null);
-      setTransactions([]);
-      fetchTransactions(null);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [address, chain]);
+  const {
+    data,
+    isLoading,
+    error,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+    refetch,
+  } = useInfiniteQuery({
+    queryKey: ["transactions", address, chain?.id],
+    queryFn: ({ pageParam }) =>
+      fetchTransactions(address!, chain!.id, pageParam),
+    getNextPageParam: (lastPage) => lastPage.nextCursor,
+    enabled: !!address && !!chain,
+    staleTime: 30 * 1000, // 30 seconds - transactions update frequently
+    gcTime: 5 * 60 * 1000, // Keep in cache for 5 minutes
+    initialPageParam: undefined,
+  });
 
-  const getChainName = (chainId: number) => {
-    const chainMap: Record<number, string> = {
-      1: "eth",
-      137: "polygon",
-      56: "bsc",
-      43114: "avalanche",
-      250: "fantom",
-      42161: "arbitrum",
-      10: "optimism",
-    };
-    return chainMap[chainId] || "eth";
-  };
-
-  const fetchTransactions = async (pageCursor: string | null) => {
-    if (!address || !chain) return;
-
-    setLoading(true);
-    setError(null);
-
-    try {
-      const chainName = getChainName(chain.id);
-      const cursorParam = pageCursor ? `&cursor=${pageCursor}` : "";
-      console.log("[TRANSACTIONS] Fetching transactions for:", address, "chain:", chainName);
-
-      const response = await fetch(
-        `/api/transactions?address=${address}&chain=${chainName}&limit=25${cursorParam}`
-      );
-
-      console.log("[TRANSACTIONS] Response status:", response.status);
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        console.error("[TRANSACTIONS] Error response:", errorData);
-        throw new Error(errorData.error || "Failed to fetch transactions");
-      }
-
-      const data = await response.json();
-      console.log("[TRANSACTIONS] Fetched data:", data);
-
-      // If we have a page cursor, append to existing transactions, otherwise replace
-      if (pageCursor) {
-        setTransactions((prev) => [...prev, ...(data.transactions || [])]);
-      } else {
-        setTransactions(data.transactions || []);
-      }
-
-      setCursor(data.cursor);
-      setHasMore(!!data.cursor);
-      console.log("[TRANSACTIONS] Set transactions count:", data.transactions?.length || 0);
-    } catch (err) {
-      console.error("[TRANSACTIONS] Error:", err);
-      setError(err instanceof Error ? err.message : "Failed to fetch transactions");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const loadMore = () => {
-    if (cursor && !loading) {
-      fetchTransactions(cursor);
-    }
-  };
+  // Flatten all pages into single array
+  const transactions = data?.pages.flatMap((page) => page.transactions) || [];
+  const loading = isLoading && transactions.length === 0;
 
   const formatAddress = (addr: string) => {
     return `${addr.slice(0, 6)}...${addr.slice(-4)}`;
@@ -198,9 +185,11 @@ export default function TransactionsPage() {
             ) : error ? (
               <div className="text-center py-20">
                 <div className="glass-strong rounded-xl p-6 max-w-md mx-auto border border-red-500/30">
-                  <div className="text-red-400 mb-4">⚠️ {error}</div>
+                  <div className="text-red-400 mb-4">
+                    ⚠️ {error instanceof Error ? error.message : "Failed to fetch transactions"}
+                  </div>
                   <button
-                    onClick={() => fetchTransactions(null)}
+                    onClick={() => refetch()}
                     className="px-6 py-2 rounded-lg bg-primary-600 hover:bg-primary-500 text-white font-semibold"
                   >
                     Try Again
@@ -343,14 +332,14 @@ export default function TransactionsPage() {
                       </div>
 
                       {/* Load More Button */}
-                      {hasMore && (
+                      {hasNextPage && (
                         <div className="flex justify-center pt-4">
                           <button
-                            onClick={loadMore}
-                            disabled={loading}
+                            onClick={() => fetchNextPage()}
+                            disabled={isFetchingNextPage}
                             className="px-6 py-3 rounded-lg bg-primary-600 hover:bg-primary-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold transition-all"
                           >
-                            {loading ? "Loading..." : "Load More"}
+                            {isFetchingNextPage ? "Loading..." : "Load More"}
                           </button>
                         </div>
                       )}

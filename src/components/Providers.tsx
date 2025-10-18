@@ -78,8 +78,16 @@ export function Providers({ children, cookies }: ProvidersProps) {
       new QueryClient({
         defaultOptions: {
           queries: {
-            retry: false,
-            refetchOnWindowFocus: false
+            // Data is considered fresh for 1 minute
+            staleTime: 60 * 1000,
+            // Cache data for 5 minutes
+            gcTime: 5 * 60 * 1000,
+            // Retry failed requests once
+            retry: 1,
+            // Refetch on window focus for real-time blockchain data
+            refetchOnWindowFocus: true,
+            // Don't refetch on mount if data is fresh
+            refetchOnMount: false,
           }
         }
       })

@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
 import { useAccount } from "wagmi";
+import { useQuery } from "@tanstack/react-query";
 import { WalletConnect } from "@/components/WalletConnect";
 import { AppSidebar } from "@/components/app-sidebar";
 import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar";
@@ -36,67 +36,58 @@ interface Position {
   };
 }
 
+const getChainName = (chainId: number) => {
+  const chainMap: Record<number, string> = {
+    1: "eth",
+    137: "polygon",
+    56: "bsc",
+    43114: "avalanche",
+    250: "fantom",
+    42161: "arbitrum",
+    10: "optimism",
+  };
+  return chainMap[chainId] || "eth";
+};
+
+const fetchPositions = async (address: string, chainId: number) => {
+  const chainName = getChainName(chainId);
+  console.log("[POSITIONS] Fetching positions for:", address, "chain:", chainName);
+
+  const response = await fetch(
+    `/api/defi-positions?address=${address}&chain=${chainName}`
+  );
+
+  console.log("[POSITIONS] Response status:", response.status);
+
+  if (!response.ok) {
+    const errorData = await response.json();
+    console.error("[POSITIONS] Error response:", errorData);
+    throw new Error(errorData.error || "Failed to fetch positions");
+  }
+
+  const data = await response.json();
+  console.log("[POSITIONS] Fetched data:", data);
+  return data.positions || [];
+};
+
 export default function PositionsPage() {
   const { chain } = useAccount();
-  const [positions, setPositions] = useState<Position[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
   // Hardcoded address for demo
   const DEMO_ADDRESS = "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045";
 
-  useEffect(() => {
-    // Always fetch positions with hardcoded address
-    fetchPositions();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [chain]);
-
-  const getChainName = (chainId: number) => {
-    const chainMap: Record<number, string> = {
-      1: "eth",
-      137: "polygon",
-      56: "bsc",
-      43114: "avalanche",
-      250: "fantom",
-      42161: "arbitrum",
-      10: "optimism",
-    };
-    return chainMap[chainId] || "eth";
-  };
-
-  const fetchPositions = async () => {
-    if (!chain) return;
-
-    setLoading(true);
-    setError(null);
-
-    try {
-      // Convert chain ID to Moralis chain format
-      const chainName = getChainName(chain.id);
-      console.log("[POSITIONS] Fetching positions for:", DEMO_ADDRESS, "chain:", chainName);
-      const response = await fetch(
-        `/api/defi-positions?address=${DEMO_ADDRESS}&chain=${chainName}`
-      );
-
-      console.log("[POSITIONS] Response status:", response.status);
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        console.error("[POSITIONS] Error response:", errorData);
-        throw new Error(errorData.error || "Failed to fetch positions");
-      }
-
-      const data = await response.json();
-      console.log("[POSITIONS] Fetched data:", data);
-      setPositions(data.positions || []);
-      console.log("[POSITIONS] Set positions count:", data.positions?.length || 0);
-    } catch (err) {
-      console.error("[POSITIONS] Error:", err);
-      setError(err instanceof Error ? err.message : "Failed to fetch positions");
-    } finally {
-      setLoading(false);
-    }
-  };
+  const {
+    data: positions = [],
+    isLoading: loading,
+    error,
+    refetch,
+  } = useQuery({
+    queryKey: ["positions", DEMO_ADDRESS, chain?.id],
+    queryFn: () => fetchPositions(DEMO_ADDRESS, chain!.id),
+    enabled: !!chain,
+    staleTime: 2 * 60 * 1000, // 2 minutes - positions don't change frequently
+    gcTime: 10 * 60 * 1000, // Keep in cache for 10 minutes
+  });
 
   const getPositionIcon = (label: string) => {
     switch (label.toLowerCase()) {
@@ -154,9 +145,11 @@ export default function PositionsPage() {
             ) : error ? (
               <div className="text-center py-20">
                 <div className="glass-strong rounded-xl p-6 max-w-md mx-auto border border-red-500/30">
-                  <div className="text-red-400 mb-4">⚠️ {error}</div>
+                  <div className="text-red-400 mb-4">
+                    ⚠️ {error instanceof Error ? error.message : "Failed to fetch positions"}
+                  </div>
                   <button
-                    onClick={fetchPositions}
+                    onClick={() => refetch()}
                     className="px-6 py-2 rounded-lg bg-primary-600 hover:bg-primary-500 text-white font-semibold"
                   >
                     Try Again
