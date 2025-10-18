@@ -13,20 +13,18 @@ import {
   SidebarMenuItem
 } from "@/components/ui/sidebar";
 import {
-  Home,
   ArrowLeftRight,
   Wallet,
-  BarChart3,
-  TrendingUp,
-  History,
-  Shield,
-  Settings,
-  HelpCircle
+  BarChart3
+  // TrendingUp,
+  // History,
+  // Shield,
+  // Settings,
+  // HelpCircle
 } from "lucide-react";
 import Link from "next/link";
 
 const menuItems = [
-  { title: "Home", icon: Home, url: "/" },
   { title: "Trade", icon: ArrowLeftRight, url: "/trade" },
   { title: "Positions", icon: Wallet, url: "/positions" },
   { title: "Transactions", icon: BarChart3, url: "/transactions" }

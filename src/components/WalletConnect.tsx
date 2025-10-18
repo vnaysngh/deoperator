@@ -62,15 +62,6 @@ export function WalletConnect() {
     [chains, chainId]
   );
 
-  const chainInitials = useMemo(() => {
-    const name = currentChain?.name ?? "Network";
-    const parts = name.split(" ");
-    if (parts.length >= 2) {
-      return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
-    }
-    return name.slice(0, 2).toUpperCase();
-  }, [currentChain]);
-
   const handleSwitchChain = useCallback(
     async (targetChainId: number) => {
       if (isSwitching || targetChainId === chainId) {
@@ -110,8 +101,7 @@ export function WalletConnect() {
     }
   }, [address]);
 
-  const isConnected =
-    Boolean(address) && status !== "disconnected";
+  const isConnected = Boolean(address) && status !== "disconnected";
 
   if (!isConnected) {
     return (

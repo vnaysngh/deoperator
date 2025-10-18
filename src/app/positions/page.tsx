@@ -5,7 +5,7 @@ import { useAccount } from "wagmi";
 import { WalletConnect } from "@/components/WalletConnect";
 import { AppSidebar } from "@/components/app-sidebar";
 import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar";
-import { PositionsIntelligence } from "@/components/PositionsIntelligence";
+import { FloatingPositionsChat } from "@/components/FloatingPositionsChat";
 
 interface Token {
   token_type: string;
@@ -143,7 +143,7 @@ export default function PositionsPage() {
             </div>
           </header>
 
-          <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 pb-48">
             {loading ? (
               <div className="flex items-center justify-center py-20">
                 <div className="text-center">
@@ -164,9 +164,7 @@ export default function PositionsPage() {
                 </div>
               </div>
             ) : (
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                {/* Positions List */}
-                <div className="lg:col-span-2 space-y-4">
+              <div className="space-y-4">
                   {positions.length === 0 ? (
                     <div className="text-center py-12 glass-strong rounded-xl">
                       <div className="text-6xl mb-4">🌾</div>
@@ -221,204 +219,144 @@ export default function PositionsPage() {
                         </div>
                       </div>
 
-                      {/* Position Cards */}
-                      {positions.map((position, index) => (
-                        <div
-                          key={index}
-                          className={`glass-strong rounded-xl overflow-hidden border bg-gradient-to-br ${getProtocolColor(
-                            position.protocol_id
-                          )}`}
-                        >
-                          {/* Protocol Header */}
-                          <div className="p-5 border-b border-white/10">
-                            <div className="flex items-start justify-between">
-                              <div className="flex items-center gap-3">
-                                {position.protocol_logo ? (
-                                  <img
-                                    src={position.protocol_logo}
-                                    alt={position.protocol_name}
-                                    className="w-10 h-10 rounded-lg"
-                                    onError={(e) => {
-                                      e.currentTarget.style.display = "none";
-                                    }}
-                                  />
-                                ) : (
-                                  <div className="w-10 h-10 rounded-lg bg-white/10 flex items-center justify-center text-xl">
-                                    {getPositionIcon(position.position.label)}
-                                  </div>
-                                )}
-                                <div>
-                                  <h3 className="font-semibold text-white">
-                                    {position.protocol_name}
-                                  </h3>
-                                  <div className="flex items-center gap-2 mt-1">
-                                    <span className="text-xs px-2 py-0.5 rounded-md glass text-gray-300 capitalize">
-                                      {position.position.label}
-                                    </span>
-                                  </div>
-                                </div>
-                              </div>
-                              <a
-                                href={position.protocol_url}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="text-xs text-primary-400 hover:text-primary-300"
-                              >
-                                Open App →
-                              </a>
-                            </div>
-                          </div>
-
-                          {/* Position Details */}
-                          <div className="p-5 space-y-4">
-                            {/* Total Value */}
-                            {position.position.balance_usd !== null && (
-                              <div className="flex items-center justify-between">
-                                <span className="text-sm text-gray-400">
-                                  Position Value
-                                </span>
-                                <span className="text-lg font-bold text-emerald-400">
-                                  $
-                                  {position.position.balance_usd.toLocaleString(
-                                    undefined,
-                                    {
-                                      minimumFractionDigits: 2,
-                                      maximumFractionDigits: 2,
-                                    }
-                                  )}
-                                </span>
-                              </div>
-                            )}
-
-                            {/* Tokens */}
-                            <div>
-                              <div className="text-xs text-gray-400 mb-2">
-                                Assets
-                              </div>
-                              <div className="space-y-2">
-                                {position.position.tokens
-                                  .filter(
-                                    (t) => t.token_type !== "defi-token"
-                                  )
-                                  .map((token, tidx) => (
-                                    <div
-                                      key={tidx}
-                                      className="flex items-center justify-between glass rounded-lg p-3"
-                                    >
-                                      <div className="flex items-center gap-2">
-                                        {token.logo && (
-                                          <img
-                                            src={token.logo}
-                                            alt={token.symbol}
-                                            className="w-6 h-6 rounded-full"
-                                            onError={(e) => {
-                                              e.currentTarget.style.display =
-                                                "none";
-                                            }}
-                                          />
-                                        )}
-                                        <div>
-                                          <div className="text-sm font-semibold text-white">
-                                            {token.symbol}
-                                          </div>
-                                          <div className="text-xs text-gray-400 capitalize">
-                                            {token.token_type.replace(
-                                              /-/g,
-                                              " "
-                                            )}
-                                          </div>
+                      {/* Positions Table */}
+                      <div className="glass-strong rounded-xl overflow-hidden border border-white/10">
+                        <div className="overflow-x-auto">
+                          <table className="w-full">
+                            <thead className="border-b border-white/10">
+                              <tr className="text-left">
+                                <th className="px-4 py-3 text-xs font-semibold text-gray-400 uppercase">
+                                  Protocol
+                                </th>
+                                <th className="px-4 py-3 text-xs font-semibold text-gray-400 uppercase">
+                                  Type
+                                </th>
+                                <th className="px-4 py-3 text-xs font-semibold text-gray-400 uppercase">
+                                  Assets
+                                </th>
+                                <th className="px-4 py-3 text-xs font-semibold text-gray-400 uppercase">
+                                  Value
+                                </th>
+                                <th className="px-4 py-3 text-xs font-semibold text-gray-400 uppercase">
+                                  Action
+                                </th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-white/5">
+                              {positions.map((position, index) => (
+                                <tr
+                                  key={index}
+                                  className="hover:bg-white/5 transition-colors"
+                                >
+                                  {/* Protocol */}
+                                  <td className="px-4 py-4">
+                                    <div className="flex items-center gap-3">
+                                      {position.protocol_logo ? (
+                                        <img
+                                          src={position.protocol_logo}
+                                          alt={position.protocol_name}
+                                          className="w-8 h-8 rounded-lg"
+                                          onError={(e) => {
+                                            e.currentTarget.style.display = "none";
+                                          }}
+                                        />
+                                      ) : (
+                                        <div className="w-8 h-8 rounded-lg bg-white/10 flex items-center justify-center text-lg">
+                                          {getPositionIcon(position.position.label)}
                                         </div>
-                                      </div>
-                                      <div className="text-right">
+                                      )}
+                                      <div>
                                         <div className="text-sm font-semibold text-white">
-                                          {parseFloat(
-                                            token.balance_formatted
-                                          ).toLocaleString(undefined, {
-                                            maximumFractionDigits: 6,
-                                          })}
+                                          {position.protocol_name}
                                         </div>
-                                        {token.usd_value !== undefined && token.usd_value !== null && (
-                                          <div className="text-xs text-gray-400">
-                                            $
-                                            {token.usd_value.toLocaleString(
-                                              undefined,
-                                              {
-                                                minimumFractionDigits: 2,
-                                                maximumFractionDigits: 2,
-                                              }
-                                            )}
-                                          </div>
-                                        )}
                                       </div>
                                     </div>
-                                  ))}
-                              </div>
-                            </div>
+                                  </td>
 
-                            {/* Position Details */}
-                            {position.position.position_details &&
-                              Object.keys(position.position.position_details)
-                                .length > 0 && (
-                                <div>
-                                  <div className="text-xs text-gray-400 mb-2">
-                                    Details
-                                  </div>
-                                  <div className="grid grid-cols-2 gap-2">
-                                    {Object.entries(
-                                      position.position.position_details
-                                    )
-                                      .filter(
-                                        ([key]) =>
-                                          ![
-                                            "reserve0",
-                                            "reserve1",
-                                            "factory",
-                                            "pair",
-                                          ].includes(key)
-                                      )
-                                      .map(([key, value]) => (
-                                        <div
-                                          key={key}
-                                          className="glass rounded-lg p-2"
-                                        >
-                                          <div className="text-xs text-gray-400 capitalize">
-                                            {key.replace(/_/g, " ")}
+                                  {/* Type */}
+                                  <td className="px-4 py-4">
+                                    <span className="text-xs px-2 py-1 rounded-md glass text-gray-300 capitalize">
+                                      {position.position.label}
+                                    </span>
+                                  </td>
+
+                                  {/* Assets */}
+                                  <td className="px-4 py-4">
+                                    <div className="flex flex-col gap-1">
+                                      {position.position.tokens
+                                        .filter((t) => t.token_type !== "defi-token")
+                                        .slice(0, 2)
+                                        .map((token, tidx) => (
+                                          <div key={tidx} className="flex items-center gap-2">
+                                            {token.logo && (
+                                              <img
+                                                src={token.logo}
+                                                alt={token.symbol}
+                                                className="w-4 h-4 rounded-full"
+                                                onError={(e) => {
+                                                  e.currentTarget.style.display = "none";
+                                                }}
+                                              />
+                                            )}
+                                            <span className="text-sm text-white">
+                                              {parseFloat(token.balance_formatted).toLocaleString(undefined, {
+                                                maximumFractionDigits: 4,
+                                              })}{" "}
+                                              {token.symbol}
+                                            </span>
                                           </div>
-                                          <div className="text-sm text-white font-medium">
-                                            {typeof value === "number"
-                                              ? value.toLocaleString(
-                                                  undefined,
-                                                  {
-                                                    maximumFractionDigits: 2,
-                                                  }
-                                                )
-                                              : String(value)}
-                                            {key.includes("percent") && "%"}
-                                          </div>
-                                        </div>
-                                      ))}
-                                  </div>
-                                </div>
-                              )}
-                          </div>
+                                        ))}
+                                      {position.position.tokens.filter((t) => t.token_type !== "defi-token").length > 2 && (
+                                        <span className="text-xs text-gray-500">
+                                          +{position.position.tokens.filter((t) => t.token_type !== "defi-token").length - 2} more
+                                        </span>
+                                      )}
+                                    </div>
+                                  </td>
+
+                                  {/* Value */}
+                                  <td className="px-4 py-4">
+                                    {position.position.balance_usd !== null ? (
+                                      <div className="text-sm font-semibold text-emerald-400">
+                                        $
+                                        {position.position.balance_usd.toLocaleString(undefined, {
+                                          minimumFractionDigits: 2,
+                                          maximumFractionDigits: 2,
+                                        })}
+                                      </div>
+                                    ) : (
+                                      <span className="text-xs text-gray-500">N/A</span>
+                                    )}
+                                  </td>
+
+                                  {/* Action */}
+                                  <td className="px-4 py-4">
+                                    <a
+                                      href={position.protocol_url}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="text-xs text-primary-400 hover:text-primary-300"
+                                    >
+                                      Open →
+                                    </a>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
                         </div>
-                      ))}
+                      </div>
                     </>
                   )}
-                </div>
-
-                {/* AI Intelligence Panel */}
-                <div className="lg:col-span-1">
-                  <div className="sticky top-24">
-                    <PositionsIntelligence
-                      positions={positions}
-                      walletAddress={DEMO_ADDRESS}
-                    />
-                  </div>
-                </div>
               </div>
             )}
           </main>
+
+          {/* Floating Chat */}
+          <FloatingPositionsChat
+            positions={positions}
+            walletAddress={DEMO_ADDRESS}
+          />
         </div>
       </SidebarInset>
     </SidebarProvider>

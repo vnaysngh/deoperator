@@ -5,7 +5,7 @@ import { useAccount } from "wagmi";
 import { WalletConnect } from "@/components/WalletConnect";
 import { AppSidebar } from "@/components/app-sidebar";
 import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar";
-import { TransactionsIntelligence } from "@/components/TransactionsIntelligence";
+import { FloatingTransactionsChat } from "@/components/FloatingTransactionsChat";
 
 interface Transaction {
   hash: string;
@@ -174,7 +174,7 @@ export default function TransactionsPage() {
             </div>
           </header>
 
-          <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 pb-48">
             {!address ? (
               <div className="text-center py-20">
                 <div className="glass-strong rounded-xl p-8 max-w-md mx-auto border border-primary-500/30">
@@ -208,9 +208,7 @@ export default function TransactionsPage() {
                 </div>
               </div>
             ) : (
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                {/* Transactions Table */}
-                <div className="lg:col-span-2 space-y-4">
+              <div className="space-y-4">
                   {transactions.length === 0 ? (
                     <div className="text-center py-12 glass-strong rounded-xl">
                       <div className="text-6xl mb-4">📭</div>
@@ -358,20 +356,15 @@ export default function TransactionsPage() {
                       )}
                     </>
                   )}
-                </div>
-
-                {/* AI Intelligence Panel */}
-                <div className="lg:col-span-1">
-                  <div className="sticky top-24">
-                    <TransactionsIntelligence
-                      transactions={transactions}
-                      walletAddress={address}
-                    />
-                  </div>
-                </div>
               </div>
             )}
           </main>
+
+          {/* Floating Chat */}
+          <FloatingTransactionsChat
+            transactions={transactions}
+            walletAddress={address}
+          />
         </div>
       </SidebarInset>
     </SidebarProvider>
