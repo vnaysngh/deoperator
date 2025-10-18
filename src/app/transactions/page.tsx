@@ -4,7 +4,7 @@ import { useAccount } from "wagmi";
 import { useInfiniteQuery } from "@tanstack/react-query";
 import { WalletConnect } from "@/components/WalletConnect";
 import { AppSidebar } from "@/components/app-sidebar";
-import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar";
+import { SidebarProvider, SidebarInset, SidebarTrigger } from "@/components/ui/sidebar";
 import { FloatingTransactionsChat } from "@/components/FloatingTransactionsChat";
 
 interface Transaction {
@@ -147,14 +147,17 @@ export default function TransactionsPage() {
         <div className="min-h-screen">
           <header className="border-b border-white/5">
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h1 className="text-2xl font-bold gradient-text">
-                    Transaction History
-                  </h1>
-                  <p className="text-sm text-gray-400 mt-1">
-                    Review and understand your on-chain activity
-                  </p>
+              <div className="flex items-center justify-between gap-4">
+                <div className="flex items-center gap-3">
+                  <SidebarTrigger className="md:hidden" />
+                  <div>
+                    <h1 className="text-xl sm:text-2xl font-bold gradient-text">
+                      Transaction History
+                    </h1>
+                    <p className="text-xs sm:text-sm text-gray-400 mt-1">
+                      Review and understand your on-chain activity
+                    </p>
+                  </div>
                 </div>
                 <WalletConnect />
               </div>
@@ -213,8 +216,9 @@ export default function TransactionsPage() {
                     <>
                       {/* Transactions Table */}
                       <div className="glass-strong rounded-xl overflow-hidden border border-white/10">
-                        <div className="overflow-x-auto">
-                          <table className="w-full">
+                        <div className="overflow-x-auto -mx-4 sm:mx-0">
+                          <div className="inline-block min-w-full align-middle">
+                            <table className="min-w-full w-full">
                             <thead className="border-b border-white/10">
                               <tr className="text-left">
                                 <th className="px-4 py-3 text-xs font-semibold text-gray-400 uppercase">
@@ -328,6 +332,7 @@ export default function TransactionsPage() {
                               })}
                             </tbody>
                           </table>
+                          </div>
                         </div>
                       </div>
 

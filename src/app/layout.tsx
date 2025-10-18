@@ -4,7 +4,7 @@ import { headers } from "next/headers";
 import { Providers } from "@/components/Providers";
 
 export const metadata: Metadata = {
-  title: "DexLuthor | AI-Powered CoW Protocol Trading",
+  title: "DeOperator | AI-Powered CoW Protocol Trading",
   description:
     "Swap tokens across Ethereum, BNB, Polygon, Base, and Arbitrum using natural language with CoW Protocol."
 };

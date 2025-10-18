@@ -1,7 +1,7 @@
 "use client";
 
 import { useChat } from "@ai-sdk/react";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { DefaultChatTransport } from "ai";
 import {
   useAccount,
@@ -58,6 +58,7 @@ export function Chat() {
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const lastProcessedUserMessageId = useRef<string | null>(null);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -70,15 +71,31 @@ export function Chat() {
     }
   }, [messages, address, status]);
 
+  useEffect(() => {
+    // Find the most recent user-authored message
+    for (let i = messages.length - 1; i >= 0; i -= 1) {
+      const message = messages[i];
+      if (message.role === "user") {
+        if (message.id !== lastProcessedUserMessageId.current) {
+          lastProcessedUserMessageId.current = message.id;
+          // Any new user message should expire previously fetched quotes
+          latestQuoteTimestamp = Date.now();
+          notifyQuoteChange();
+        }
+        break;
+      }
+    }
+  }, [messages]);
+
   return (
     <div className="bg-black rounded-2xl overflow-hidden shadow-2xl flex flex-col max-h-[80vh]">
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto p-6 space-y-4 min-h-[500px]">
+      <div className="flex-1 overflow-y-auto p-3 sm:p-6 space-y-4 min-h-[400px] sm:min-h-[500px]">
         {messages.length === 0 && (
           <div className="h-full flex flex-col items-center justify-center text-center">
-            <div className="w-16 h-16 rounded-2xl bg-primary-600/20 flex items-center justify-center mb-4">
+            <div className="w-12 h-12 sm:w-16 sm:h-16 rounded-2xl bg-primary-600/20 flex items-center justify-center mb-3 sm:mb-4">
               <svg
-                className="w-8 h-8 text-primary-400"
+                className="w-6 h-6 sm:w-8 sm:h-8 text-primary-400"
                 fill="none"
                 stroke="currentColor"
                 viewBox="0 0 24 24"
@@ -91,25 +108,57 @@ export function Chat() {
                 />
               </svg>
             </div>
-            <h3 className="text-lg font-semibold text-white mb-2">
+            <h3 className="text-base sm:text-lg font-semibold text-white mb-2">
               Start Trading
             </h3>
-            <p className="text-sm text-gray-400 mb-6 max-w-sm">
+            <p className="text-xs sm:text-sm text-gray-400 mb-4 sm:mb-6 max-w-sm px-4 sm:px-0">
               Ask me anything about trading. Here are some examples:
             </p>
-            <div className="space-y-2 text-sm text-left">
-              <div className="glass rounded-lg px-4 py-2 text-gray-300">
+            <div className="space-y-2 text-xs sm:text-sm text-left max-w-md w-full px-2">
+              <button
+                onClick={() => {
+                  if (address) {
+                    sendMessage({ text: "Swap 1 BNB for USDC on BNB Chain" });
+                  }
+                }}
+                disabled={!address}
+                className="w-full glass rounded-lg px-3 sm:px-4 py-2 text-gray-300 hover:bg-white/10 transition-colors cursor-pointer text-left disabled:cursor-not-allowed disabled:opacity-50"
+              >
                 &quot;Swap 1 BNB for USDC on BNB Chain&quot;
-              </div>
-              <div className="glass rounded-lg px-4 py-2 text-gray-300">
+              </button>
+              <button
+                onClick={() => {
+                  if (address) {
+                    sendMessage({ text: "What's the price of CAKE?" });
+                  }
+                }}
+                disabled={!address}
+                className="w-full glass rounded-lg px-3 sm:px-4 py-2 text-gray-300 hover:bg-white/10 transition-colors cursor-pointer text-left disabled:cursor-not-allowed disabled:opacity-50"
+              >
                 &quot;What&apos;s the price of CAKE?&quot;
-              </div>
-              <div className="glass rounded-lg px-4 py-2 text-gray-300">
+              </button>
+              <button
+                onClick={() => {
+                  if (address) {
+                    sendMessage({ text: "Get me a quote for 100 USDC to DAI on Arbitrum" });
+                  }
+                }}
+                disabled={!address}
+                className="w-full glass rounded-lg px-3 sm:px-4 py-2 text-gray-300 hover:bg-white/10 transition-colors cursor-pointer text-left disabled:cursor-not-allowed disabled:opacity-50"
+              >
                 &quot;Get me a quote for 100 USDC to DAI on Arbitrum&quot;
-              </div>
-              <div className="glass rounded-lg px-4 py-2 text-gray-300">
+              </button>
+              <button
+                onClick={() => {
+                  if (address) {
+                    sendMessage({ text: "Show me the best rate for 0.5 ETH to USDT" });
+                  }
+                }}
+                disabled={!address}
+                className="w-full glass rounded-lg px-3 sm:px-4 py-2 text-gray-300 hover:bg-white/10 transition-colors cursor-pointer text-left disabled:cursor-not-allowed disabled:opacity-50"
+              >
                 &quot;Show me the best rate for 0.5 ETH to USDT&quot;
-              </div>
+              </button>
             </div>
           </div>
         )}
@@ -122,9 +171,9 @@ export function Chat() {
             }`}
           >
             <div
-              className={`max-w-[80%] rounded-2xl px-4 py-3 text-gray-200 bg-transparent`}
+              className={`max-w-[85%] sm:max-w-[80%] rounded-2xl px-3 sm:px-4 py-2 sm:py-3 text-gray-200 bg-transparent`}
             >
-              <div className="text-sm whitespace-pre-wrap break-words leading-relaxed">
+              <div className="text-xs sm:text-sm whitespace-pre-wrap break-words leading-relaxed">
                 {message.parts.map((part, index) => {
                   if (part.type === "text") {
                     return <span key={index}>{part.text}</span>;
@@ -377,9 +426,9 @@ export function Chat() {
             setInput("");
           }
         }}
-        className="p-4 flex-shrink-0"
+        className="p-3 sm:p-4 flex-shrink-0"
       >
-        <div className="flex items-center">
+        <div className="flex items-center gap-2 border-b border-white/10 focus-within:border-emerald-500/50 transition-colors">
           <input
             ref={inputRef}
             value={input}
@@ -390,8 +439,28 @@ export function Chat() {
                 : "Connect your wallet to start trading"
             }
             disabled={!address || status === "streaming"}
-            className="flex-1 px-0 py-3 bg-transparent border-b border-white/10 focus:outline-none focus:border-emerald-500/50 disabled:opacity-50 disabled:cursor-not-allowed text-white placeholder:text-gray-500 transition-colors caret-emerald-500"
+            className="flex-1 px-0 py-2 sm:py-3 bg-transparent focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed text-white placeholder:text-gray-500 text-sm sm:text-base caret-emerald-500"
           />
+          <button
+            type="submit"
+            disabled={!input.trim() || !address || status === "streaming"}
+            className="p-2 rounded-lg transition-all disabled:opacity-30 disabled:cursor-not-allowed enabled:bg-emerald-600 enabled:hover:bg-emerald-500 text-white flex-shrink-0"
+            aria-label="Send message"
+          >
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="M12 19V5" />
+              <path d="M5 12l7-7 7 7" />
+            </svg>
+          </button>
         </div>
       </form>
     </div>
@@ -514,6 +583,16 @@ function QuoteDisplay({
   const [orderInProgress, setOrderInProgress] = useState(false);
   const [orderCompleted, setOrderCompleted] = useState(false);
 
+  const {
+    amount,
+    chain,
+    chainId,
+    fromTokenAddress,
+    fromTokenDecimals,
+    toTokenAddress,
+    toTokenDecimals
+  } = tokenInfo;
+
   // Generate unique timestamp for this quote instance
   const [quoteTimestamp] = useState(() => Date.now());
 
@@ -528,18 +607,47 @@ function QuoteDisplay({
     };
   }, []);
 
-  // Function to fetch quote
-  const fetchQuote = async () => {
+  const fetchQuote = useCallback(async () => {
     setLoading(true);
     setError(null);
 
-    let activeWalletClient = walletClient;
-
-    if (!publicClient || !address) {
+    if (!address) {
       setError("Please connect your wallet");
       setLoading(false);
       return;
     }
+
+    let activePublicClient = publicClient;
+    if (
+      !activePublicClient ||
+      (activePublicClient.chain && activePublicClient.chain.id !== chainId)
+    ) {
+      try {
+        const { getPublicClient } = await import("wagmi/actions");
+        const { wagmiAdapter } = await import("@/lib/wagmi");
+        activePublicClient = await getPublicClient(
+          wagmiAdapter.wagmiConfig,
+          {
+            chainId
+          }
+        );
+      } catch (publicClientError) {
+        console.error(
+          "[CLIENT] Unable to resolve public client:",
+          publicClientError
+        );
+      }
+    }
+
+    if (!activePublicClient) {
+      setError(
+        "Unable to reach the selected network right now. Please try again in a moment."
+      );
+      setLoading(false);
+      return;
+    }
+
+    let activeWalletClient = walletClient;
 
     if (!activeWalletClient) {
       try {
@@ -549,17 +657,19 @@ function QuoteDisplay({
           wagmiAdapter.wagmiConfig,
           {
             account: address,
-            chainId: tokenInfo.chainId
+            assertChainId: false
           }
         );
       } catch (walletClientError) {
-        console.error("[CLIENT] Unable to resolve wallet client:", walletClientError);
+        console.error(
+          "[CLIENT] Unable to resolve wallet client:",
+          walletClientError
+        );
       }
     }
 
     if (!activeWalletClient) {
-      setError("Please connect your wallet");
-      setLoading(false);
+      // Wallet is still initialising; keep spinner active so effect retries when client arrives.
       return;
     }
 
@@ -569,60 +679,44 @@ function QuoteDisplay({
       // Import and use the client SDK
       const { getSwapQuote } = await import("@/lib/cowswap-client");
 
-      const quoteResponse = await getSwapQuote(publicClient, activeWalletClient, {
-        sellToken: tokenInfo.fromTokenAddress as Address,
-        sellTokenDecimals: tokenInfo.fromTokenDecimals,
-        buyToken: tokenInfo.toTokenAddress as Address,
-        buyTokenDecimals: tokenInfo.toTokenDecimals,
-        amount: parseUnits(
-          tokenInfo.amount.toString(),
-          tokenInfo.fromTokenDecimals
-        ).toString(),
-        userAddress: address,
-        chainId: tokenInfo.chainId
-      });
+      const quoteResponse = await getSwapQuote(
+        activePublicClient,
+        activeWalletClient,
+        {
+          sellToken: fromTokenAddress as Address,
+          sellTokenDecimals: fromTokenDecimals,
+          buyToken: toTokenAddress as Address,
+          buyTokenDecimals: toTokenDecimals,
+          amount: parseUnits(amount.toString(), fromTokenDecimals).toString(),
+          userAddress: address,
+          chainId
+        }
+      );
 
-      console.log("[CLIENT] Quote response:", quoteResponse);
-
-      // Check if quote failed or has no results
       if (!quoteResponse || !quoteResponse.quoteResults) {
-        console.error("[CLIENT] No quoteResults in response");
         setError(
-          "Unable to get a quote for this trade. This may be due to insufficient liquidity or the trade amount being too small. Try adjusting the amount or choosing different tokens."
+          "Unable to get a quote for this trade. This might be due to insufficient liquidity or the trade amount being too small."
         );
         setLoading(false);
         return;
       }
-
-      console.log("[CLIENT] quoteResults:", quoteResponse.quoteResults);
 
       const { amountsAndCosts } = quoteResponse.quoteResults;
 
-      console.log("[CLIENT] amountsAndCosts:", amountsAndCosts);
-
-      // Validate the response structure
       if (
         !amountsAndCosts ||
-        !amountsAndCosts.afterSlippage ||
-        !amountsAndCosts.afterSlippage.buyAmount ||
+        !amountsAndCosts.beforeNetworkCosts ||
         !amountsAndCosts.afterNetworkCosts ||
-        !amountsAndCosts.afterNetworkCosts.buyAmount ||
         !amountsAndCosts.costs ||
         !amountsAndCosts.costs.networkFee
       ) {
-        console.error(
-          "[CLIENT] Invalid quote response structure:",
-          amountsAndCosts
-        );
         setError(
-          "Unable to get a quote for this trade. There may be insufficient liquidity for this token pair. Try using a smaller amount or different tokens."
+          "Unable to get a quote for this trade. Try using a smaller amount or different tokens."
         );
         setLoading(false);
         return;
       }
 
-      // Use beforeNetworkCosts for the headline quote (matches CoW Swap UI)
-      // afterNetworkCosts is what the user receives once network fees are deducted
       const buyAmountBeforeFees = amountsAndCosts.beforeNetworkCosts.buyAmount;
       const buyAmountAfterNetworkCosts =
         amountsAndCosts.afterNetworkCosts.buyAmount;
@@ -640,42 +734,29 @@ function QuoteDisplay({
         50;
       const slippagePercent = (Number(slippageBps) / 100).toFixed(2);
 
-      console.log("[CLIENT] Quote values:", {
-        buyAmountBeforeFees: buyAmountBeforeFees.toString(),
-        buyAmountAfterNetworkCosts: buyAmountAfterNetworkCosts.toString(),
-        networkFeeInSellToken: networkFeeInSellToken.toString(),
-        slippageBps
-      });
-
       setQuote({
-        buyAmount: formatQuoteAmount(
-          buyAmountBeforeFees,
-          tokenInfo.toTokenDecimals
-        ),
+        buyAmount: formatQuoteAmount(buyAmountBeforeFees, toTokenDecimals),
         buyAmountAfterFees: formatQuoteAmount(
           buyAmountAfterNetworkCosts,
-          tokenInfo.toTokenDecimals
+          toTokenDecimals
         ),
         feeAmount: formatQuoteAmount(
           networkFeeInSellToken,
-          tokenInfo.fromTokenDecimals
+          fromTokenDecimals
         ),
         slippagePercent,
         postSwapOrderFromQuote: quoteResponse.postSwapOrderFromQuote
       });
       setLoading(false);
-      setCountdown(30); // Reset countdown after successful fetch
+      setCountdown(30);
 
-      // Mark this as the latest quote ONLY after successful fetch
-      // AND only if no newer quote has taken over while we were fetching
       if (quoteTimestamp >= latestQuoteTimestamp) {
         latestQuoteTimestamp = quoteTimestamp;
-        notifyQuoteChange(); // Notify all quote components to re-render
+        notifyQuoteChange();
       }
     } catch (err) {
       console.error("[CLIENT] Quote fetch error:", err);
 
-      // Check for specific error messages
       const errorMessage = err instanceof Error ? err.message : String(err);
 
       if (errorMessage.toLowerCase().includes("liquidity")) {
@@ -686,6 +767,13 @@ function QuoteDisplay({
         setError(
           "Price slippage too high for this trade. Try adjusting the amount or try again later."
         );
+      } else if (
+        activeWalletClient.chain &&
+        activeWalletClient.chain.id !== chainId
+      ) {
+        setError(
+          `Quote fetched while your wallet is on a different network. You can review the numbers, but switch to ${chain ?? "the requested chain"} before creating the order.`
+        );
       } else {
         setError(
           "Unable to get a quote for this trade. Please try again or use different tokens."
@@ -694,15 +782,23 @@ function QuoteDisplay({
 
       setLoading(false);
     }
-  };
+  }, [
+    address,
+    amount,
+    chain,
+    chainId,
+    fromTokenDecimals,
+    fromTokenAddress,
+    publicClient,
+    quoteTimestamp,
+    toTokenDecimals,
+    toTokenAddress,
+    walletClient
+  ]);
 
-  // Initial fetch on mount
   useEffect(() => {
-    // Mark this quote as the latest ONLY after we successfully load
-    // This prevents new loading quotes from expiring old ones immediately
     fetchQuote();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [fetchQuote]);
 
   // Countdown timer with auto-refresh
   useEffect(() => {
@@ -728,8 +824,7 @@ function QuoteDisplay({
     }, 1000);
 
     return () => clearInterval(timer);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loading, error, quote, orderInProgress, orderCompleted, quoteTimestamp]);
+  }, [fetchQuote, loading, error, quote, orderInProgress, orderCompleted, quoteTimestamp]);
 
   if (loading) {
     return (
@@ -880,8 +975,79 @@ function OrderSubmit({
 
   useEffect(() => {
     async function submitOrder() {
-      if (!publicClient || !walletClient || !address) {
+      if (!address) {
         setError("Please connect your wallet");
+        setStatus("error");
+        return;
+      }
+
+      const expectedChainLabel =
+        tokenInfo.chain ?? `chain ID ${tokenInfo.chainId}`;
+
+      let activePublicClient = publicClient;
+      if (
+        !activePublicClient ||
+        (activePublicClient.chain &&
+          activePublicClient.chain.id !== tokenInfo.chainId)
+      ) {
+        try {
+          const { getPublicClient } = await import("wagmi/actions");
+          const { wagmiAdapter } = await import("@/lib/wagmi");
+          activePublicClient = await getPublicClient(
+            wagmiAdapter.wagmiConfig,
+            {
+              chainId: tokenInfo.chainId
+            }
+          );
+        } catch (publicClientError) {
+          console.error(
+            "[CLIENT] Unable to resolve public client:",
+            publicClientError
+          );
+        }
+      }
+
+      if (!activePublicClient) {
+        setError(
+          "Unable to reach the selected network. Please try again after reconnecting."
+        );
+        setStatus("error");
+        return;
+      }
+
+      let activeWalletClient = walletClient;
+
+      if (!activeWalletClient) {
+        try {
+          const { getWalletClient } = await import("wagmi/actions");
+          const { wagmiAdapter } = await import("@/lib/wagmi");
+          activeWalletClient = await getWalletClient(
+            wagmiAdapter.wagmiConfig,
+            {
+              account: address,
+              chainId: tokenInfo.chainId
+            }
+          );
+        } catch (walletClientError) {
+          console.error(
+            "[CLIENT] Unable to resolve wallet client for order submission:",
+            walletClientError
+          );
+          setError(
+            `Switch your wallet to ${expectedChainLabel} before submitting the order.`
+          );
+          setStatus("error");
+          return;
+        }
+      }
+
+      if (
+        activeWalletClient.chain &&
+        activeWalletClient.chain.id !== tokenInfo.chainId
+      ) {
+        setError(
+          `Switch your wallet to ${expectedChainLabel} before submitting the order.`
+        );
         setStatus("error");
         return;
       }
@@ -889,15 +1055,19 @@ function OrderSubmit({
       try {
         console.log("[CLIENT] Submitting order with Trading SDK...");
 
-        const result = await quoteAndSubmitSwap(publicClient, walletClient, {
-          sellToken: tokenInfo.fromTokenAddress as Address,
-          sellTokenDecimals: tokenInfo.fromTokenDecimals,
-          buyToken: tokenInfo.toTokenAddress as Address,
-          buyTokenDecimals: tokenInfo.toTokenDecimals,
-          amount: tokenInfo.sellAmount,
-          userAddress: address,
-          chainId: tokenInfo.chainId
-        });
+        const result = await quoteAndSubmitSwap(
+          activePublicClient,
+          activeWalletClient,
+          {
+            sellToken: tokenInfo.fromTokenAddress as Address,
+            sellTokenDecimals: tokenInfo.fromTokenDecimals,
+            buyToken: tokenInfo.toTokenAddress as Address,
+            buyTokenDecimals: tokenInfo.toTokenDecimals,
+            amount: tokenInfo.sellAmount,
+            userAddress: address,
+            chainId: tokenInfo.chainId
+          }
+        );
 
         setOrderId(result.orderId);
         setStatus("success");
@@ -988,6 +1158,7 @@ function CreateOrderButton({
   >("idle");
   const [orderId, setOrderId] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [chainWarning, setChainWarning] = useState<string | null>(null);
   const [isApproved, setIsApproved] = useState(false);
   const [isCheckingApproval, setIsCheckingApproval] = useState(true);
 
@@ -999,6 +1170,12 @@ function CreateOrderButton({
     (typeof tokenInfo.fromTokenAddress === "string" &&
       tokenInfo.fromTokenAddress.toLowerCase() ===
         NATIVE_CURRENCY_ADDRESS.toLowerCase());
+
+  const walletChainId = walletClient?.chain?.id;
+  const expectedChainLabel =
+    tokenInfo.chain ?? `chain ID ${tokenInfo.chainId}`;
+  const chainMismatch =
+    walletChainId !== undefined && walletChainId !== tokenInfo.chainId;
 
   // Get balance for the sell token
   const { data: balance, isLoading: balanceLoading } = useBalance({
@@ -1019,6 +1196,12 @@ function CreateOrderButton({
   // Check approval status on mount
   useEffect(() => {
     async function checkApproval() {
+      if (chainMismatch) {
+        setIsApproved(false);
+        setIsCheckingApproval(false);
+        return;
+      }
+
       if (!publicClient || !walletClient || !address) {
         setIsCheckingApproval(false);
         return;
@@ -1051,6 +1234,7 @@ function CreateOrderButton({
 
     checkApproval();
   }, [
+    chainMismatch,
     publicClient,
     walletClient,
     address,
@@ -1060,7 +1244,28 @@ function CreateOrderButton({
     isNativeCurrencyTrade
   ]);
 
+  useEffect(() => {
+    if (chainMismatch) {
+      setChainWarning(
+        `Switch your wallet to ${expectedChainLabel} before creating the order.`
+      );
+    } else {
+      setChainWarning(null);
+      // Clear stale errors so the button becomes actionable after switching
+      if (orderStatus === "error" && !errorMessage) {
+        setOrderStatus("idle");
+      }
+    }
+  }, [chainMismatch, expectedChainLabel, errorMessage, orderStatus]);
+
   const handleClick = async () => {
+    if (chainMismatch) {
+      setChainWarning(
+        `Switch your wallet to ${expectedChainLabel} before creating the order.`
+      );
+      return;
+    }
+
     if (!publicClient || !walletClient || !address) {
       setErrorMessage("Please connect your wallet");
       setOrderStatus("error");
@@ -1181,6 +1386,12 @@ function CreateOrderButton({
           </div>
         )}
 
+      {chainWarning && (
+        <div className="text-xs text-amber-400 bg-amber-500/10 px-3 py-2 rounded-md">
+          {chainWarning}
+        </div>
+      )}
+
       {/* Error Messages */}
       {!hasEnoughBalance && !balanceLoading && balance && (
         <div className="text-xs text-red-400 bg-red-500/10 px-3 py-2 rounded-md">
@@ -1206,7 +1417,8 @@ function CreateOrderButton({
           orderStatus !== "idle" ||
           !hasEnoughBalance ||
           balanceLoading ||
-          isCheckingApproval
+          isCheckingApproval ||
+          chainMismatch
         }
         className={`w-full px-4 py-3 rounded-lg font-semibold text-sm transition-all ${
           !isLatestQuote
@@ -1215,7 +1427,8 @@ function CreateOrderButton({
               !hasEnoughBalance ||
               balanceLoading ||
               isCheckingApproval ||
-              orderStatus === "error"
+              orderStatus === "error" ||
+              chainMismatch
             ? "bg-gray-700 text-gray-400 cursor-not-allowed"
             : orderStatus !== "idle"
             ? "bg-emerald-600 text-white cursor-wait"

@@ -49,7 +49,7 @@ export function AppSidebar() {
                 <span className="text-white font-bold text-lg">D</span>
               </div>
               <div className="flex flex-col gap-0.5 leading-none">
-                <span className="font-bold gradient-text">DexLuthor</span>
+                <span className="font-bold gradient-text">DeOperator</span>
                 <span className="text-xs text-gray-500">Trading Terminal</span>
               </div>
             </SidebarMenuButton>

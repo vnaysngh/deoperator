@@ -3,7 +3,7 @@
 import { Chat } from "@/components/Chat";
 import { WalletConnect } from "@/components/WalletConnect";
 import { AppSidebar } from "@/components/app-sidebar";
-import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar";
+import { SidebarProvider, SidebarInset, SidebarTrigger } from "@/components/ui/sidebar";
 import { useState } from "react";
 
 export default function TradePage() {
@@ -17,7 +17,8 @@ export default function TradePage() {
         <div className="min-h-screen">
           <header className="border-b border-white/5">
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-              <div className="flex items-center justify-end">
+              <div className="flex items-center justify-between md:justify-end">
+                <SidebarTrigger className="md:hidden" />
                 <WalletConnect />
               </div>
             </div>

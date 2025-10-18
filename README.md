@@ -1,4 +1,4 @@
-# DexLuthor
+# DeOperator
 
 A modern, AI-powered interface for trading through CoW Protocol using natural language. Built with Next.js 15, Vercel AI SDK, and Moralis data services.
 
@@ -35,7 +35,7 @@ A modern, AI-powered interface for trading through CoW Protocol using natural la
 
 ```bash
 git clone <your-repo-url>
-cd dexluthor
+cd deoperator
 npm install
 ```
 
@@ -92,7 +92,7 @@ Open [http://localhost:3000](http://localhost:3000) in your browser.
 ## Project Structure
 
 ```
-dexluthor/
+deoperator/
 ├── src/
 │   ├── app/
 │   │   ├── api/

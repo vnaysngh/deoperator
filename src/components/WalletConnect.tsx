@@ -108,15 +108,16 @@ export function WalletConnect() {
       <button
         onClick={openAppKitModal}
         type="button"
-        className="px-6 py-2.5 bg-gradient-to-r from-primary-600 to-primary-700 text-white rounded-xl hover:from-primary-500 hover:to-primary-600 transition-all font-medium shadow-glow hover:shadow-glow-lg"
+        className="px-4 sm:px-6 py-2 sm:py-2.5 bg-gradient-to-r from-primary-600 to-primary-700 text-white rounded-xl hover:from-primary-500 hover:to-primary-600 transition-all font-medium shadow-glow hover:shadow-glow-lg text-sm sm:text-base"
       >
-        Connect Wallet
+        <span className="hidden sm:inline">Connect Wallet</span>
+        <span className="sm:hidden">Connect</span>
       </button>
     );
   }
 
   return (
-    <div className="relative flex items-center gap-3">
+    <div className="relative flex items-center gap-2 sm:gap-3">
       <div ref={chainMenuRef} className="relative">
         <button
           onClick={() => {
@@ -124,14 +125,14 @@ export function WalletConnect() {
             setAccountMenuOpen(false);
           }}
           type="button"
-          className="px-3 py-2 glass rounded-xl text-sm hover:bg-white/5 transition-all border border-white/10 flex items-center gap-2 cursor-pointer"
+          className="px-2 sm:px-3 py-1.5 sm:py-2 glass rounded-xl text-xs sm:text-sm hover:bg-white/5 transition-all border border-white/10 flex items-center gap-1.5 sm:gap-2 cursor-pointer"
         >
-          <span className="w-2 h-2 rounded-full bg-emerald-500" />
+          <span className="w-2 h-2 rounded-full bg-emerald-500 flex-shrink-0" />
           {/*  <span className="w-4 h-4 rounded-full bg-white/10 flex items-center justify-center text-[10px] font-semibold text-white/80">
             {chainInitials}
           </span> */}
-          <span className="text-gray-300">
-            {currentChain?.name ?? "Select Chain"}
+          <span className="text-gray-300 truncate max-w-[80px] sm:max-w-none">
+            {currentChain?.name ?? "Chain"}
           </span>
         </button>
 
@@ -180,7 +181,7 @@ export function WalletConnect() {
             setChainMenuOpen(false);
           }}
           type="button"
-          className="px-4 py-2 glass rounded-xl text-sm font-mono text-gray-300 border border-emerald-500/30 hover:bg-white/5 transition-all cursor-pointer"
+          className="px-3 sm:px-4 py-1.5 sm:py-2 glass rounded-xl text-xs sm:text-sm font-mono text-gray-300 border border-emerald-500/30 hover:bg-white/5 transition-all cursor-pointer"
         >
           {ensName ?? truncateAddress(address)}
         </button>

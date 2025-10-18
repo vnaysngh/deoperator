@@ -24,9 +24,9 @@ type AppKitWindow = Window &
   };
 
 const metadata = {
-  name: "DexLuthor",
+  name: "DeOperator",
   description: "AI-powered CoW Protocol trading",
-  url: "https://dexluthor.app",
+  url: "https://deoperator.app",
   icons: ["https://avatars.githubusercontent.com/u/179229932"]
 };
 
@@ -87,7 +87,7 @@ export function Providers({ children, cookies }: ProvidersProps) {
             // Refetch on window focus for real-time blockchain data
             refetchOnWindowFocus: true,
             // Don't refetch on mount if data is fresh
-            refetchOnMount: false,
+            refetchOnMount: false
           }
         }
       })
