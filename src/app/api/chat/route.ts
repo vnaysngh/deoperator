@@ -101,19 +101,18 @@ export async function POST(req: Request) {
       🔗 Supported Chains:
       - Ethereum (chainId: 1) ✅
       - Arbitrum (chainId: 42161) ✅
-      - BNB Chain (chainId: 56) ✅
       - Base (chainId: 8453) ✅
 
       Token Support:
       - Supports thousands of verified tokens via curated lists and CoinGecko enrichment
-      - Popular tokens: WETH, USDC, USDT, DAI, WBTC, LINK, AAVE, ARB, WBNB, cbETH, etc.
-      - Bridged and wrapped assets exist across networks (e.g., WETH on Base, BTCB on BNB Chain). Always confirm the chain the user specifies.
+      - Popular tokens: WETH, USDC, USDT, DAI, WBTC, LINK, AAVE, ARB, cbETH, etc.
+      - Bridged and wrapped assets exist across networks (e.g., WETH on Base). Always confirm the chain the user specifies.
 
       🔥 NATIVE CURRENCY SUPPORT:
-      - Native blockchain tokens (ETH on Ethereum/Arbitrum/Base, BNB on BNB Chain) are FULLY SUPPORTED
-      - When user asks to swap ETH or BNB (the native tokens), we handle it automatically
+      - Native blockchain tokens (ETH on Ethereum/Arbitrum/Base) are FULLY SUPPORTED
+      - When user asks to swap ETH (the native token), we handle it automatically
       - Users can say "swap ETH to USDC" or "swap 1 ETH for USDC" - you understand they mean the native ETH
-      - No need to ask for wrapped versions (WETH/WBNB) - we handle native tokens directly
+      - No need to ask for wrapped versions (WETH) - we handle native tokens directly
 
       Token Lookup Strategy:
       - When user asks for a token, use the token symbol they provide directly
@@ -168,18 +167,17 @@ export async function POST(req: Request) {
       When user wants to know a token's USD/dollar price (not swapping to another token):
       - Use getTokenUSDPrice tool
       - Need: Token + Chain
-      - Examples: "What's the price of ARB?", "How much is ETH?", "BNB price"
+      - Examples: "What's the price of ARB?", "How much is ETH?"
 
       USE CASE 2: USER ASKS FOR SWAP QUOTE OR TOKEN-TO-TOKEN PRICE
       When user wants to swap tokens or know token-to-token exchange rate:
       - Use getSwapQuote tool
       - Need: From Token + To Token + Amount + Chain
-      - Examples: "How much ARB for 1 USDC?", "Swap 10 ARB to USDC", "Convert BNB to USDT"
+      - Examples: "How much ARB for 1 USDC?", "Swap 10 ARB to USDC"
 
       Chain Detection Rules (ONLY when explicitly mentioned):
       - "ethereum", "eth", or "mainnet" → chainId: 1
       - "arbitrum" or "arb" → chainId: 42161
-      - "bnb", "bsc", or "binance" → chainId: 56
       - "base" → chainId: 8453
 
       NEVER assume a default chain. ALWAYS ask if not specified.
@@ -291,8 +289,8 @@ export async function POST(req: Request) {
       YOUR RESPONSE: "ETH is currently $650.50 USD on Ethereum"
 
       Example 4 (Token not found):
-      Tool output: {"success": false, "userMessage": "I couldn't find APEX on BNB Chain. Could you double-check the token symbol? If you have the token contract address, I can look it up directly for you.", "error": "Tokens not found"}
-      YOUR RESPONSE: "I couldn't find APEX on BNB Chain. Could you double-check the token symbol? If you have the token contract address, I can look it up directly for you."
+      Tool output: {"success": false, "userMessage": "I couldn't find APEX on this chain. Could you double-check the token symbol? If you have the token contract address, I can look it up directly for you.", "error": "Tokens not found"}
+      YOUR RESPONSE: "I couldn't find APEX on this chain. Could you double-check the token symbol? If you have the token contract address, I can look it up directly for you."
 
       🚨 CRITICAL: The UI will NOT show tool outputs. You MUST speak the userMessage yourself in your text response.
 
@@ -303,7 +301,7 @@ export async function POST(req: Request) {
         // Your existing custom tools
         getSwapQuote: tool({
           description:
-            "Get token information for a swap. Returns token addresses and decimals. The client-side SDK will fetch the actual quote. ONLY call this when you have confirmed: fromToken, toToken, amount, AND chainId with the user. Do NOT assume defaults. Supports Ethereum (1), BNB Chain (56), Base (8453), and Arbitrum (42161).",
+            "Get token information for a swap. Returns token addresses and decimals. The client-side SDK will fetch the actual quote. ONLY call this when you have confirmed: fromToken, toToken, amount, AND chainId with the user. Do NOT assume defaults. Supports Ethereum (1), Base (8453), and Arbitrum (42161).",
           inputSchema: z.object({
             fromToken: z
               .string()
@@ -321,7 +319,7 @@ export async function POST(req: Request) {
             chainId: z
               .number()
               .describe(
-                "Chain ID - REQUIRED, must be explicitly provided by user. 1=Ethereum, 56=BNB, 8453=Base, 42161=Arbitrum. NO DEFAULT - always ask if not specified"
+                "Chain ID - REQUIRED, must be explicitly provided by user. 1=Ethereum, 8453=Base, 42161=Arbitrum. NO DEFAULT - always ask if not specified"
               )
           }),
           execute: async ({ fromToken, toToken, amount, chainId }) => {
@@ -337,7 +335,7 @@ export async function POST(req: Request) {
               const normalizedTo = normalizeTokenSymbol(toToken, chainId);
               const chainName = getChainName(chainId);
 
-              // Check if fromToken is native currency (ETH, BNB, MATIC, etc.)
+              // Check if fromToken is native currency (ETH, MATIC, etc.)
               if (isNativeCurrency(normalizedFrom, chainId)) {
                 console.log("[TOOL:getSwapQuote] Detected native currency:", normalizedFrom);
                 const nativeCurrency = getNativeCurrency(chainId)!;
@@ -347,7 +345,7 @@ export async function POST(req: Request) {
                 if (!toTokenInfo) {
                   const errorResult = toolError({
                     success: false,
-                    userMessage: `I couldn't find ${toToken} on ${chainName}. Could you double-check the token symbol? If you have the contract address (0x...), I can look it up directly. Popular tokens include WETH, USDC, USDT, ARB, and DAI.`,
+                    userMessage: `I couldn't find ${toToken} on ${chainName}. Could you double-check the token symbol? If you have the contract address (0x...), I can look it up directly.`,
                     error: `Token not found: ${toToken}`
                   });
                   console.log(
@@ -390,7 +388,7 @@ export async function POST(req: Request) {
               if (!fromTokenInfo) {
                 const errorResult = toolError({
                   success: false,
-                  userMessage: `I couldn't find ${fromToken} on ${chainName}. Could you double-check the token symbol? If you have the contract address (0x...), I can look it up directly. Popular tokens include WETH, USDC, USDT, ARB, and DAI.`,
+                  userMessage: `I couldn't find ${fromToken} on ${chainName}. Could you double-check the token symbol? If you have the contract address (0x...), I can look it up directly.`,
                   error: `Token not found: ${fromToken}`
                 });
                 console.log(
@@ -403,7 +401,7 @@ export async function POST(req: Request) {
               if (!toTokenInfo) {
                 const errorResult = toolError({
                   success: false,
-                  userMessage: `I couldn't find ${toToken} on ${chainName}. Could you double-check the token symbol? If you have the contract address (0x...), I can look it up directly. Popular tokens include WETH, USDC, USDT, ARB, and DAI.`,
+                  userMessage: `I couldn't find ${toToken} on ${chainName}. Could you double-check the token symbol? If you have the contract address (0x...), I can look it up directly.`,
                   error: `Token not found: ${toToken}`
                 });
                 console.log(
@@ -458,7 +456,7 @@ export async function POST(req: Request) {
             chainId: z
               .number()
               .describe(
-                "Chain ID - REQUIRED. 1=Ethereum, 56=BNB, 8453=Base, 42161=Arbitrum"
+                "Chain ID - REQUIRED. 1=Ethereum, 8453=Base, 42161=Arbitrum"
               )
           }),
           execute: async ({ fromToken, toToken, amount, chainId }) => {
@@ -584,7 +582,7 @@ export async function POST(req: Request) {
               .number()
               .optional()
               .describe(
-                "Optional chain ID to highlight the contract on a specific network (1=Ethereum, 56=BNB, 8453=Base, 42161=Arbitrum)"
+                "Optional chain ID to highlight the contract on a specific network (1=Ethereum, 8453=Base, 42161=Arbitrum)"
               )
           }),
           execute: async ({ symbol, chainId }) => {
@@ -802,7 +800,7 @@ export async function POST(req: Request) {
         }),
         getTokenInfo: tool({
           description:
-            "Get information about a specific token including its address and decimals. Supports tokens on Ethereum, Arbitrum, BNB Chain, and Base.",
+            "Get information about a specific token including its address and decimals. Supports tokens on Ethereum, Arbitrum, and Base.",
           inputSchema: z.object({
             symbol: z
               .string()
@@ -811,7 +809,7 @@ export async function POST(req: Request) {
               .number()
               .optional()
               .describe(
-                "Chain ID: 1=Ethereum, 56=BNB, 8453=Base, 42161=Arbitrum (default: 42161)"
+                "Chain ID: 1=Ethereum, 8453=Base, 42161=Arbitrum (default: 42161)"
               )
           }),
           execute: async ({ symbol, chainId = 42161 }) => {
@@ -850,7 +848,7 @@ export async function POST(req: Request) {
             chainId: z
               .number()
               .describe(
-                "Chain ID - REQUIRED, must be explicitly provided by user. 1=Ethereum, 56=BNB, 8453=Base, 42161=Arbitrum. NO DEFAULT - always ask if not specified"
+                "Chain ID - REQUIRED, must be explicitly provided by user. 1=Ethereum, 8453=Base, 42161=Arbitrum. NO DEFAULT - always ask if not specified"
               )
           }),
           execute: async ({ token, chainId }) => {
@@ -858,7 +856,7 @@ export async function POST(req: Request) {
               const normalized = normalizeTokenSymbol(token, chainId);
               const chainName = getChainName(chainId);
 
-              // Check if this is a native currency (ETH, BNB, MATIC/POL/POLYGON)
+              // Check if this is a native currency (ETH, MATIC/POL/POLYGON)
               if (isNativeCurrency(normalized, chainId)) {
                 console.log("[TOOL:getTokenUSDPrice] Detected native currency:", normalized);
                 const nativeCurrency = getNativeCurrency(chainId)!;
@@ -867,7 +865,7 @@ export async function POST(req: Request) {
                 // We directly use the coin ID to fetch details (no search API needed)
                 const coinGeckoIdMap: Record<string, string> = {
                   'ETH': 'ethereum',
-                  'BNB': 'binancecoin',
+                  // 'BNB': 'binancecoin',
                   'MATIC': 'polygon-ecosystem-token',
                   'POL': 'polygon-ecosystem-token',
                   'POLYGON': 'polygon-ecosystem-token'
@@ -977,7 +975,7 @@ export async function POST(req: Request) {
             chainId: z
               .number()
               .describe(
-                "Chain ID - REQUIRED. 1=Ethereum, 56=BNB, 8453=Base, 42161=Arbitrum. Ask user if not specified."
+                "Chain ID - REQUIRED. 1=Ethereum, 8453=Base, 42161=Arbitrum. Ask user if not specified."
               ),
             minUsdValue: z
               .number()
@@ -1102,7 +1100,7 @@ export async function POST(req: Request) {
             chainId: z
               .number()
               .describe(
-                "Chain ID - REQUIRED. 1=Ethereum, 56=BNB, 8453=Base, 42161=Arbitrum. Ask user if not specified."
+                "Chain ID - REQUIRED. 1=Ethereum, 8453=Base, 42161=Arbitrum. Ask user if not specified."
               )
           }),
           execute: async ({ tokens, chainId }) => {
@@ -1285,7 +1283,7 @@ export async function POST(req: Request) {
             chainId: z
               .number()
               .describe(
-                "Chain ID - REQUIRED. 1=Ethereum, 56=BNB, 8453=Base, 42161=Arbitrum"
+                "Chain ID - REQUIRED. 1=Ethereum, 8453=Base, 42161=Arbitrum"
               )
           }),
           execute: async ({ fromToken, toToken, chainId }) => {

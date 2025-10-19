@@ -70,7 +70,7 @@ async function fetchTokenBalancesFromIndexer(
     // Map chain IDs to Moralis chain names
     const chainMap: Record<number, string> = {
       1: 'eth',
-      56: 'bsc',
+      // 56: 'bsc',
       8453: 'base',
       42161: 'arbitrum'
     }
@@ -108,7 +108,7 @@ async function fetchTokenBalancesFromIndexer(
     console.log(`[WALLET] Found ${result.length} tokens from Moralis`)
 
     // Map Moralis response to our format
-    // Filter out native tokens (ETH/BNB) and tokens with USD value below $0.01
+    // Filter out native tokens (e.g., ETH) and tokens with USD value below $0.01
     interface MoralisToken {
       native_token?: boolean;
       usd_value?: string;
@@ -123,7 +123,7 @@ async function fetchTokenBalancesFromIndexer(
 
     const tokens = result
       .filter((token: MoralisToken) => {
-        // Exclude native tokens (ETH/BNB)
+        // Exclude native tokens
         if (token.native_token) return false
 
         // Only include tokens with USD value >= $0.01

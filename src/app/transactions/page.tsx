@@ -34,7 +34,6 @@ interface Transaction {
 const getChainName = (chainId: number) => {
   const chainMap: Record<number, string> = {
     1: "eth",
-    56: "bsc",
     43114: "avalanche",
     250: "fantom",
     42161: "arbitrum",

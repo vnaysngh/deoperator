@@ -152,24 +152,13 @@ export function Chat() {
               <button
                 onClick={() => {
                   if (address) {
-                    sendMessage({ text: "Swap 1 BNB for USDC on BNB Chain" });
+                    sendMessage({ text: "What's the price of ETH on Base?" });
                   }
                 }}
                 disabled={!address}
                 className="w-full glass rounded-lg px-3 sm:px-4 py-2 text-gray-300 hover:bg-white/10 transition-colors cursor-pointer text-left disabled:cursor-not-allowed disabled:opacity-50"
               >
-                Swap 1 BNB for USDC on BNB Chain
-              </button>
-              <button
-                onClick={() => {
-                  if (address) {
-                    sendMessage({ text: "What's the price of CAKE?" });
-                  }
-                }}
-                disabled={!address}
-                className="w-full glass rounded-lg px-3 sm:px-4 py-2 text-gray-300 hover:bg-white/10 transition-colors cursor-pointer text-left disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                What&apos;s the price of CAKE?
+                What&apos;s the price of ETH on Base?
               </button>
               <button
                 onClick={() => {
@@ -974,7 +963,7 @@ function QuoteDisplay({
           <div className="flex items-center gap-2">
             <div className="w-2 h-2 rounded-full bg-emerald-500"></div>
             <span className="text-xs font-semibold text-emerald-400">
-              CoW Protocol Quote
+              Live Swap Quote
             </span>
           </div>
           <div className="flex items-center gap-2">
@@ -1050,8 +1039,7 @@ function QuoteDisplay({
             <div className="pt-2 mt-2 border-t border-white/5">
               <div className="text-gray-500 text-xs">Route</div>
               <div className="text-white text-sm">
-                {tokenInfo.fromToken} → [CoW Protocol Batch Auction] →{" "}
-                {tokenInfo.toToken}
+                {tokenInfo.fromToken} → [Batch Auction] → {tokenInfo.toToken}
               </div>
             </div>
 
@@ -1239,7 +1227,7 @@ function OrderSubmit({
           rel="noopener noreferrer"
           className="text-xs text-primary-400 hover:text-primary-300"
         >
-          View on CoW Explorer →
+          View order details →
         </a>
       </div>
     </div>
@@ -1474,7 +1462,7 @@ function CreateOrderButton({
             rel="noopener noreferrer"
             className="block text-xs text-primary-400 hover:text-primary-300"
           >
-            View on CoW Explorer →
+            View order details →
           </a>
         )}
       </div>

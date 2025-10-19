@@ -20,8 +20,8 @@ function getCowChainId(chainId: number): SupportedChainId {
   switch (chainId) {
     case 1:
       return SupportedChainId.MAINNET;
-    case 56:
-      return SupportedChainId.BNB;
+    // case 56:
+    //   return SupportedChainId.BNB;
     // case 137:
     //   return SupportedChainId.POLYGON;
     case 100:

@@ -36,7 +36,7 @@ interface TokenList {
 
 const SUPPORTED_CHAIN_IDS = [
   CHAIN_IDS.ETHEREUM,
-  CHAIN_IDS.BNB,
+  // CHAIN_IDS.BNB,
   // CHAIN_IDS.POLYGON,
   CHAIN_IDS.BASE,
   CHAIN_IDS.ARBITRUM
@@ -108,7 +108,7 @@ async function fetchTokenLists(): Promise<TokenCache> {
       // polygon: Object.keys(tokens[CHAIN_IDS.POLYGON]).length,
       base: Object.keys(tokens[CHAIN_IDS.BASE]).length,
       arbitrum: Object.keys(tokens[CHAIN_IDS.ARBITRUM]).length,
-      bnb: Object.keys(tokens[CHAIN_IDS.BNB]).length
+      // bnb: Object.keys(tokens[CHAIN_IDS.BNB]).length
     })
 
     console.log('[TOKENS] Token list fetching complete. Using CoinGecko for missing tokens.')
@@ -134,13 +134,13 @@ function getFallbackTokens(): TokenCache {
     WBTC: new Token(1, '0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599', 8, 'WBTC', 'Wrapped Bitcoin')
   }
 
-  map[CHAIN_IDS.BNB] = {
-    USDC: new Token(56, '0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d', 18, 'USDC', 'USD Coin'),
-    USDT: new Token(56, '0x55d398326f99059fF775485246999027B3197955', 18, 'USDT', 'Tether USD'),
-    DAI: new Token(56, '0x1AF3F329e8BE154074D8769D1FFa4eE058B1DBc3', 18, 'DAI', 'Dai Stablecoin'),
-    WBNB: new Token(56, '0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c', 18, 'WBNB', 'Wrapped BNB'),
-    CAKE: new Token(56, '0x0E09FaBB73Bd3Ade0a17ECC321fD13a19e81cE82', 18, 'CAKE', 'PancakeSwap Token')
-  }
+  // map[CHAIN_IDS.BNB] = {
+  //   USDC: new Token(56, '0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d', 18, 'USDC', 'USD Coin'),
+  //   USDT: new Token(56, '0x55d398326f99059fF775485246999027B3197955', 18, 'USDT', 'Tether USD'),
+  //   DAI: new Token(56, '0x1AF3F329e8BE154074D8769D1FFa4eE058B1DBc3', 18, 'DAI', 'Dai Stablecoin'),
+  //   WBNB: new Token(56, '0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c', 18, 'WBNB', 'Wrapped BNB'),
+  //   CAKE: new Token(56, '0x0E09FaBB73Bd3Ade0a17ECC321fD13a19e81cE82', 18, 'CAKE', 'PancakeSwap Token')
+  // }
 
   // map[CHAIN_IDS.POLYGON] = {
   //   WMATIC: new Token(137, '0x0d500B1d8E8eF31E21C99d1Db9A6444d3ADf1270', 18, 'WMATIC', 'Wrapped MATIC'),
@@ -311,10 +311,10 @@ export function normalizeTokenSymbol(input: string, chainId: number): string {
     MATIC: chainId === CHAIN_IDS.POLYGON ? 'WMATIC' : 'MATIC'
   }
 
-  if (chainId === CHAIN_IDS.BNB) {
-    if (normalized === 'BNB') return 'WBNB'
-    if (['WBTC', 'BTC', 'BITCOIN'].includes(normalized)) return 'BTCB'
-  }
+  // if (chainId === CHAIN_IDS.BNB) {
+  //   if (normalized === 'BNB') return 'WBNB'
+  //   if (['WBTC', 'BTC', 'BITCOIN'].includes(normalized)) return 'BTCB'
+  // }
 
   if (chainId === CHAIN_IDS.ARBITRUM) {
     if (normalized === 'ETHEREUM' || normalized === 'ETH') return 'WETH'

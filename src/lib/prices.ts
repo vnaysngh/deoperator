@@ -4,7 +4,6 @@ const MORALIS_PRICE_API_BASE_URL = 'https://deep-index.moralis.io/api/v2.2/erc20
 
 const MORALIS_CHAIN_MAP: Record<number, string> = {
   [1]: 'eth',
-  [56]: 'bsc',
   [8453]: 'base',
   [42161]: 'arbitrum'
 }
@@ -32,7 +31,7 @@ export async function getTokenUSDPrice(
         success: false,
         error: 'Chain not supported',
         userMessage:
-          'I can only fetch prices on Ethereum, BNB Chain, Base, or Arbitrum right now. Want to try one of those networks?'
+          'I can only fetch prices on Ethereum, Base, or Arbitrum right now. Want to try one of those networks?'
       }
     }
 

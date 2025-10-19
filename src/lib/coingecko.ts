@@ -3,8 +3,8 @@ import { CHAIN_IDS } from "./chains";
 const COINGECKO_API_BASE_URL = "https://api.coingecko.com/api/v3";
 
 const PLATFORM_ID_BY_CHAIN: Record<number, string> = {
-  [CHAIN_IDS.ARBITRUM]: "arbitrum-one",
-  [CHAIN_IDS.BNB]: "binance-smart-chain"
+  [CHAIN_IDS.ARBITRUM]: "arbitrum-one"
+  // [CHAIN_IDS.BNB]: "binance-smart-chain"
 };
 
 const PLATFORM_ID_TO_CHAIN: Record<string, number> = Object.fromEntries(

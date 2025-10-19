@@ -27,13 +27,13 @@ export const NATIVE_CURRENCIES: Record<number, NativeCurrency> = {
     aliases: ['eth', 'ethereum', 'ether'],
   },
   // BNB Chain
-  56: {
-    symbol: 'BNB',
-    name: 'BNB',
-    decimals: 18,
-    chainId: 56,
-    aliases: ['bnb', 'binance coin', 'binance token'],
-  },
+  // 56: {
+  //   symbol: 'BNB',
+  //   name: 'BNB',
+  //   decimals: 18,
+  //   chainId: 56,
+  //   aliases: ['bnb', 'binance coin', 'binance token'],
+  // },
   // Polygon
   // 137: {
   //   symbol: 'MATIC',

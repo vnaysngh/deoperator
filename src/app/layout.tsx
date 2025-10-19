@@ -4,9 +4,9 @@ import { headers } from "next/headers";
 import { Providers } from "@/components/Providers";
 
 export const metadata: Metadata = {
-  title: "DeOperator | AI-Powered CoW Protocol Trading",
+  title: "DeOperator | AI-Powered Trading Terminal",
   description:
-    "Swap tokens across Ethereum, BNB, Base, and Arbitrum using natural language with CoW Protocol."
+    "Swap tokens across Ethereum, Base, and Arbitrum using natural language."
 };
 
 export default function RootLayout({

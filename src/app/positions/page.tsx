@@ -39,7 +39,6 @@ interface Position {
 const getChainName = (chainId: number) => {
   const chainMap: Record<number, string> = {
     1: "eth",
-    56: "bsc",
     43114: "avalanche",
     250: "fantom",
     42161: "arbitrum",
@@ -70,10 +69,7 @@ const fetchPositions = async (address: string, chainId: number) => {
 };
 
 export default function PositionsPage() {
-  const { chain } = useAccount();
-
-  // Hardcoded address for demo
-  const DEMO_ADDRESS = "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045";
+  const { address, chain } = useAccount();
 
   const {
     data: positions = [],
@@ -81,9 +77,9 @@ export default function PositionsPage() {
     error,
     refetch,
   } = useQuery({
-    queryKey: ["positions", DEMO_ADDRESS, chain?.id],
-    queryFn: () => fetchPositions(DEMO_ADDRESS, chain!.id),
-    enabled: !!chain,
+    queryKey: ["positions", address, chain?.id],
+    queryFn: () => fetchPositions(address!, chain!.id),
+    enabled: !!address && !!chain,
     staleTime: 2 * 60 * 1000, // 2 minutes - positions don't change frequently
     gcTime: 10 * 60 * 1000, // Keep in cache for 10 minutes
   });

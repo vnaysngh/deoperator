@@ -3,7 +3,6 @@ import { WagmiAdapter } from "@reown/appkit-adapter-wagmi";
 import {
   arbitrum,
   base,
-  bsc,
   mainnet
   // polygon
 } from "@reown/appkit/networks";
@@ -19,7 +18,7 @@ if (!projectId) {
   );
 }
 
-export const networks = [mainnet, bsc, /* polygon, */ base, arbitrum];
+export const networks = [mainnet, /* bsc, */ /* polygon, */ base, arbitrum];
 
 export const wagmiAdapter = new WagmiAdapter({
   projectId: projectId || "demo",
