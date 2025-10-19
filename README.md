@@ -10,6 +10,7 @@ A modern, AI-powered interface for trading through CoW Protocol and staking via 
 - **Wallet Integration**: Secure wallet connection using Wagmi and WalletConnect
 - **Direct Execution**: Trades execute directly through CoW Protocol batch auctions
 - **Morpho Staking**: Surface top USDC and WETH vaults on Ethereum, Arbitrum, and Base with built-in approvals
+- **Cross-Chain Bridging**: Move ETH, USDC, USDT, and DAI across Ethereum, Arbitrum, and Base using Across Protocol
 - **Multi-Token Support**: Trade popular tokens including WETH, USDC, USDT, DAI, WBTC, and UNI
 
 ## Tech Stack
@@ -87,6 +88,7 @@ Open [http://localhost:3000](http://localhost:3000) in your browser.
    - "Get me a quote for 100 USDC to DAI"
    - "What's the price of WBTC?"
    - "Trade 0.5 ETH for USDT"
+   - "Bridge 250 USDC from Arbitrum to Base"
    - "What are the staking options for USDC on Base?"
 3. **Review & Confirm**: The AI will get a quote and ask for confirmation
 4. **Execute Trade**: Confirm in your wallet to complete the swap
@@ -110,6 +112,7 @@ deoperator/
 │   └── lib/
 │       ├── chains.ts               # Supported chain constants & helpers
 │       ├── coingecko.ts            # CoinGecko search & metadata helpers
+│       ├── across-client.ts        # Across bridge quotes & serialization helpers
 │       ├── cowswap-client.ts       # Client-side CoW Protocol SDK wrapper
 │       ├── morpho-client.ts        # Morpho vault discovery & staking utilities
 │       ├── prices.ts               # Moralis USD price lookups
@@ -129,6 +132,7 @@ deoperator/
 - Implements tool calling for:
   - `getSwapQuote`: Resolves token metadata and performs liquidity pre-checks before the client fetches a CoW quote
   - `createOrder`: Supplies the client with all parameters needed for Trading SDK order creation
+  - `getBridgeQuote`: Retrieves Across bridge quotes with fee and timing details for supported tokens
   - `getMorphoStakingOptions`: Fetches Morpho vault stats for USDC/WETH staking on supported chains
   - `getTokenInfo`: Returns token details
   - `getTokenUSDPrice`: Fetches USD pricing via Moralis

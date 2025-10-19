@@ -10,6 +10,7 @@
     "test:lookup": "node scripts/test-token-profile.js"
   },
   "dependencies": {
+    "@across-protocol/app-sdk": "^0.4.2",
     "@ai-sdk/anthropic": "^2.0.27",
     "@ai-sdk/openai": "^2.0.49",
     "@ai-sdk/react": "^2.0.68",

@@ -25,6 +25,10 @@ import {
   type SupportedMorphoAsset,
   type SupportedMorphoChainId
 } from "@/lib/morpho-client";
+import {
+  getAcrossBridgeQuote,
+  type SerializedBridgeQuote
+} from "@/lib/across-client";
 import { formatCompactNumber } from "@/lib/utils";
 
 export const maxDuration = 30;
@@ -123,6 +127,14 @@ export async function POST(req: Request) {
       - If a user asks for staking options without choosing a token, ask: "Which token would you like to stake, USDC or WETH?"
       - Call getMorphoStakingOptions after you have chainId + token, then describe APY and deposits in plain language (no need to repeat the vault brand name).
       - Remind the user they can press the Stake button in the UI when ready; approvals are handled automatically client-side.
+
+      🌉 BRIDGING VIA ACROSS:
+      - Bridge only the same token between chains (no cross-asset swaps) using Across Protocol.
+      - Supported chains: Ethereum (1), Arbitrum (42161), Base (8453).
+      - Supported tokens: ETH, USDC, USDT, DAI. If a user asks for another token, let them know it isn’t supported yet.
+      - ALWAYS collect the origin chain, destination chain, token, and amount before requesting a quote.
+      - Call getBridgeQuote once you have the required details, then share the output amount, fee summary, and estimated fill time with the user.
+      - Tell the user they can press the Bridge button in the UI to execute; the client will handle chain switching, approvals, and the deposit.
 
       🔥 NATIVE CURRENCY SUPPORT:
       - Native blockchain tokens (ETH on Ethereum/Arbitrum/Base) are FULLY SUPPORTED
@@ -599,6 +611,46 @@ export async function POST(req: Request) {
                 tvlUsd: vault.tvlUsd,
                 totalAssets: vault.totalAssets
               }
+            });
+          }
+        }),
+        getBridgeQuote: tool({
+          description:
+            "Get an Across Protocol bridge quote to move the same token between supported chains. Requires originChainId, destinationChainId, tokenSymbol, and amount.",
+          inputSchema: z.object({
+            originChainId: z
+              .number()
+              .describe("The chain ID the user is bridging from. Only 1, 42161, and 8453 are supported."),
+            destinationChainId: z
+              .number()
+              .describe("The chain ID the user is bridging to. Only 1, 42161, and 8453 are supported."),
+            tokenSymbol: z
+              .string()
+              .describe("Token symbol to bridge. Only ETH, USDC, USDT, or DAI are supported."),
+            amount: z
+              .string()
+              .describe("Amount of the token to bridge (as a decimal string).")
+          }),
+          execute: async ({ originChainId, destinationChainId, tokenSymbol, amount }) => {
+            const result = await getAcrossBridgeQuote({
+              originChainId,
+              destinationChainId,
+              tokenSymbol,
+              amount
+            });
+
+            if (!result.success) {
+              return toolError({
+                success: false,
+                userMessage: result.userMessage,
+                error: result.error ?? "Bridge quote failed"
+              });
+            }
+
+            return toolSuccess({
+              success: true,
+              message: result.message,
+              bridgeQuote: result.bridgeQuote satisfies SerializedBridgeQuote
             });
           }
         }),

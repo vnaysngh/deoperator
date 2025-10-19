@@ -19,6 +19,11 @@ import {
   depositIntoMorphoVault,
   getMorphoVaultAllowance
 } from "@/lib/morpho-client";
+import {
+  deserializeBridgeDeposit,
+  getAcrossClient,
+  type SerializedBridgeQuote
+} from "@/lib/across-client";
 import { NATIVE_CURRENCY_ADDRESS } from "@/lib/native-currencies";
 import { formatCompactNumber } from "@/lib/utils";
 import type { Address, PublicClient, WalletClient } from "viem";
@@ -370,6 +375,19 @@ export function Chat() {
               >
                 What are the staking options for USDC on Base?
               </button>
+              <button
+                onClick={() => {
+                  if (address) {
+                    sendMessage({
+                      text: "Bridge 250 USDC from Arbitrum to Base"
+                    });
+                  }
+                }}
+                disabled={!address}
+                className="w-full glass rounded-lg px-3 sm:px-4 py-2 text-gray-300 hover:bg-white/10 transition-colors cursor-pointer text-left disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Bridge 250 USDC from Arbitrum to Base
+              </button>
             </div>
           </div>
         )}
@@ -445,6 +463,20 @@ export function Chat() {
                             <MorphoStakingCard
                               key={index}
                               stakingInfo={stakingInfo}
+                              publicClient={publicClient}
+                              walletClient={walletClient}
+                              address={address}
+                            />
+                          );
+                        }
+
+                        const bridgeQuote = output
+                          ?.bridgeQuote as SerializedBridgeQuote | undefined;
+                        if (bridgeQuote?.needsClientBridge) {
+                          return (
+                            <BridgeQuoteCard
+                              key={index}
+                              bridgeQuote={bridgeQuote}
                               publicClient={publicClient}
                               walletClient={walletClient}
                               address={address}
@@ -682,8 +714,8 @@ export function Chat() {
             onChange={(e) => setInput(e.target.value)}
             placeholder={
               address
-                ? "Ask me to trade or stake tokens..."
-                : "Connect your wallet to start trading or staking"
+                ? "Ask me to trade, stake, or bridge tokens..."
+                : "Connect your wallet to start trading, staking, or bridging"
             }
             disabled={!address || status === "streaming"}
             className="flex-1 px-0 py-2 sm:py-3 bg-transparent focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed text-white placeholder:text-gray-500 text-sm sm:text-base caret-emerald-500"
@@ -835,6 +867,403 @@ function EntireBalanceQuoteDisplay({
         address={address}
       />
     </>
+  );
+}
+
+function BridgeQuoteCard({
+  bridgeQuote,
+  publicClient,
+  walletClient,
+  address
+}: {
+  bridgeQuote: SerializedBridgeQuote;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  publicClient: any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  walletClient: any;
+  address?: Address;
+}) {
+  const [status, setStatus] = useState<
+    | "idle"
+    | "preparing"
+    | "approving"
+    | "depositing"
+    | "waiting-fill"
+    | "success"
+    | "error"
+  >("idle");
+  const [statusMessage, setStatusMessage] = useState<string | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [depositId, setDepositId] = useState<string | null>(null);
+  const [depositTxHash, setDepositTxHash] = useState<string | null>(null);
+  const [fillTxHash, setFillTxHash] = useState<string | null>(null);
+
+  const walletChainId = walletClient?.chain?.id;
+  const chainMismatch =
+    walletChainId !== undefined && walletChainId !== bridgeQuote.originChainId;
+
+  const { data: balance, isLoading: balanceLoading, refetch } = useBalance({
+    address,
+    chainId: bridgeQuote.originChainId,
+    token: bridgeQuote.isNative ? undefined : (bridgeQuote.tokenAddress as Address)
+  });
+
+  const inputAmount = useMemo(
+    () => BigInt(bridgeQuote.inputAmountWei),
+    [bridgeQuote.inputAmountWei]
+  );
+
+  const hasEnoughBalance = useMemo(() => {
+    if (!balance) {
+      return null;
+    }
+    return balance.value >= inputAmount;
+  }, [balance, inputAmount]);
+
+  const isProcessing =
+    status === "preparing" ||
+    status === "approving" ||
+    status === "depositing" ||
+    status === "waiting-fill";
+
+  const buttonLabel = useMemo(() => {
+    switch (status) {
+      case "preparing":
+        return "Switching...";
+      case "approving":
+        return "Approve in wallet...";
+      case "depositing":
+        return "Confirm deposit...";
+      case "waiting-fill":
+        return "Waiting for fill...";
+      case "success":
+        return "Bridge again";
+      case "error":
+        return "Try again";
+      default:
+        return "Bridge";
+    }
+  }, [status]);
+
+  const feeSummary = useMemo(
+    () => {
+      const formatPercent = (value: number) =>
+        Number.isFinite(value) ? `${value.toFixed(3)}%` : "—";
+
+      return [
+        {
+          label: "Total fee",
+          value: `${bridgeQuote.totalFee.amountFormatted} ${bridgeQuote.tokenSymbol}`,
+          percent: formatPercent(bridgeQuote.totalFee.percentage)
+        },
+        {
+          label: "Relayer gas",
+          value: `${bridgeQuote.relayerGasFee.amountFormatted} ${bridgeQuote.tokenSymbol}`,
+          percent: formatPercent(bridgeQuote.relayerGasFee.percentage)
+        },
+        {
+          label: "Relayer capital",
+          value: `${bridgeQuote.relayerCapitalFee.amountFormatted} ${bridgeQuote.tokenSymbol}`,
+          percent: formatPercent(bridgeQuote.relayerCapitalFee.percentage)
+        },
+        {
+          label: "LP fee",
+          value: `${bridgeQuote.lpFee.amountFormatted} ${bridgeQuote.tokenSymbol}`,
+          percent: formatPercent(bridgeQuote.lpFee.percentage)
+        }
+      ];
+    },
+    [bridgeQuote]
+  );
+
+  const handleBridge = useCallback(async () => {
+    if (!address) {
+      setErrorMessage("Connect your wallet to bridge.");
+      return;
+    }
+
+    if (hasEnoughBalance === false) {
+      setErrorMessage(
+        `You don't have enough ${bridgeQuote.tokenSymbol} on ${bridgeQuote.originChainLabel} to bridge that amount.`
+      );
+      return;
+    }
+
+    setErrorMessage(null);
+    setStatusMessage(null);
+    setDepositId(null);
+    setDepositTxHash(null);
+    setFillTxHash(null);
+
+    let preparedClients: {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      publicClient: any;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      walletClient: any;
+    };
+
+    try {
+      setStatus("preparing");
+      setStatusMessage(`Switching to ${bridgeQuote.originChainLabel}...`);
+      preparedClients = await ensureClientsOnChain({
+        targetChainId: bridgeQuote.originChainId,
+        address,
+        publicClient,
+        walletClient
+      });
+      await refetch?.();
+    } catch (switchError) {
+      const { message } = describeSwitchError(
+        switchError,
+        bridgeQuote.originChainLabel
+      );
+      setStatus("error");
+      setStatusMessage(null);
+      setErrorMessage(message);
+      return;
+    }
+
+    try {
+      const acrossClient = getAcrossClient();
+      acrossClient.update({
+        walletClient: preparedClients.walletClient
+      });
+
+      const deposit = deserializeBridgeDeposit(bridgeQuote.deposit);
+      const destinationClient = acrossClient.getPublicClient(
+        bridgeQuote.destinationChainId
+      );
+
+      setStatus("approving");
+      setStatusMessage("Checking allowance...");
+
+      await acrossClient.executeQuote({
+        deposit,
+        walletClient: preparedClients.walletClient,
+        originClient: preparedClients.publicClient,
+        destinationClient,
+        onProgress: (progress) => {
+          if (
+            progress.status === "error" ||
+            progress.status === "simulationError" ||
+            progress.status === "txError"
+          ) {
+            setStatus("error");
+            setStatusMessage(null);
+            setErrorMessage(
+              progress.error?.message ||
+                "Bridge transaction failed. Please try again."
+            );
+            return;
+          }
+
+          if (progress.step === "approve") {
+            if (progress.status === "txPending") {
+              setStatus("approving");
+              setStatusMessage("Approval pending in your wallet...");
+            }
+            if (progress.status === "txSuccess") {
+              setStatusMessage("Approval confirmed. Preparing deposit...");
+            }
+          }
+
+          if (progress.step === "deposit") {
+            if (progress.status === "simulationPending") {
+              setStatus("depositing");
+              setStatusMessage("Simulating deposit...");
+            }
+            if (progress.status === "txPending") {
+              setStatus("depositing");
+              setStatusMessage("Deposit submitted. Waiting for confirmation...");
+              if (progress.txHash) {
+                setDepositTxHash(progress.txHash);
+              }
+            }
+            if (progress.status === "txSuccess") {
+              setStatus("waiting-fill");
+              setStatusMessage(
+                "Deposit confirmed! Waiting for the relayer to fill on the destination chain..."
+              );
+              if (progress.depositId) {
+                setDepositId(progress.depositId.toString());
+              }
+              if (progress.txReceipt?.transactionHash) {
+                setDepositTxHash(progress.txReceipt.transactionHash);
+              }
+            }
+          }
+
+          if (progress.step === "fill") {
+            if (progress.status === "txPending") {
+              setStatus("waiting-fill");
+              setStatusMessage("Fill transaction pending on the destination chain...");
+            }
+            if (progress.status === "txSuccess") {
+              setStatus("success");
+              setStatusMessage("Bridge filled! Funds are available on the destination chain.");
+              if (progress.txReceipt?.transactionHash) {
+                setFillTxHash(progress.txReceipt.transactionHash);
+              }
+            }
+          }
+        }
+      });
+    } catch (err) {
+      console.error("[CLIENT] Across bridge error:", err);
+      setStatus("error");
+      setStatusMessage(null);
+
+      if (err instanceof Error) {
+        const lower = err.message.toLowerCase();
+        if (lower.includes("user rejected")) {
+          setErrorMessage(
+            "Looks like the transaction was rejected. Approve it in your wallet to bridge."
+          );
+          return;
+        }
+        setErrorMessage(err.message);
+        return;
+      }
+
+      setErrorMessage("Bridge failed. Please try again.");
+    }
+  }, [
+    address,
+    bridgeQuote,
+    publicClient,
+    walletClient,
+    hasEnoughBalance,
+    refetch
+  ]);
+
+  const minDepositNotice =
+    bridgeQuote.limits.minDepositWei !== "0"
+      ? bridgeQuote.limits.minDepositFormatted
+      : null;
+
+  return (
+    <div className="mt-3 pt-3 border-t border-white/10">
+      <div className="glass-strong rounded-lg p-4 space-y-4">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <div className="flex items-center gap-2 text-xs uppercase tracking-wide text-primary-300">
+              <span className="inline-flex h-2 w-2 rounded-full bg-primary-400"></span>
+              Across Bridge
+            </div>
+            <div className="text-lg font-semibold text-white mt-1">
+              {bridgeQuote.requestedAmount} {bridgeQuote.tokenSymbol}
+            </div>
+            <div className="text-xs text-gray-400">
+              {bridgeQuote.originChainLabel} → {bridgeQuote.destinationChainLabel}
+            </div>
+          </div>
+          <div className="flex gap-4 text-sm">
+            <div>
+              <div className="text-gray-400 text-xs uppercase">You send</div>
+              <div className="text-white font-semibold">
+                {bridgeQuote.inputAmountFormatted} {bridgeQuote.tokenSymbol}
+              </div>
+            </div>
+            <div>
+              <div className="text-gray-400 text-xs uppercase">You receive</div>
+              <div className="text-white font-semibold">
+                {bridgeQuote.outputAmountFormatted} {bridgeQuote.tokenSymbol}
+              </div>
+            </div>
+            <div>
+              <div className="text-gray-400 text-xs uppercase">ETA</div>
+              <div className="text-white font-semibold">
+                {bridgeQuote.estimatedFillTimeFormatted}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-black/30 rounded-xl border border-white/10 p-3 space-y-3">
+          <div className="text-xs text-gray-300 font-medium">Fee breakdown</div>
+          <div className="grid gap-2 sm:grid-cols-2">
+            {feeSummary.map((fee) => (
+              <div
+                key={fee.label}
+                className="flex items-center justify-between text-xs text-gray-400"
+              >
+                <span>{fee.label}</span>
+                <span className="text-gray-200">
+                  {fee.value}
+                  <span className="text-gray-500"> ({fee.percent})</span>
+                </span>
+              </div>
+            ))}
+          </div>
+          {minDepositNotice && (
+            <div className="text-xs text-gray-400">
+              Minimum deposit for this lane: {minDepositNotice} {bridgeQuote.tokenSymbol}
+            </div>
+          )}
+          {hasEnoughBalance === false && (
+            <div className="text-xs text-red-400">
+              Insufficient {bridgeQuote.tokenSymbol} balance. You need {bridgeQuote.inputAmountFormatted} {bridgeQuote.tokenSymbol} but only have {balance
+                ? `${Number(
+                    formatUnits(balance.value, balance.decimals)
+                  ).toLocaleString(undefined, {
+                    maximumFractionDigits: 6
+                  })} ${bridgeQuote.tokenSymbol}`
+                : `0 ${bridgeQuote.tokenSymbol}`}.
+            </div>
+          )}
+          {bridgeQuote.isAmountTooLow && hasEnoughBalance !== false && (
+            <div className="text-xs text-amber-400">
+              This amount is near the minimum. Larger deposits may settle faster.
+            </div>
+          )}
+            {chainMismatch && (
+              <div className="text-xs text-amber-400">
+                We&apos;ll prompt your wallet to switch to {bridgeQuote.originChainLabel} when you bridge. If nothing pops up, change networks manually.
+              </div>
+            )}
+        </div>
+
+        <div className="space-y-2">
+          <button
+            type="button"
+            onClick={handleBridge}
+            disabled={
+              !address ||
+              isProcessing ||
+              balanceLoading ||
+              hasEnoughBalance === false
+            }
+            className="w-full px-4 py-3 rounded-lg font-semibold text-sm transition-all bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 disabled:cursor-not-allowed text-white"
+          >
+            {buttonLabel}
+          </button>
+          {balanceLoading && (
+            <div className="text-xs text-primary-300">Checking balance...</div>
+          )}
+          {statusMessage && (
+            <div className="text-xs text-primary-300">{statusMessage}</div>
+          )}
+          {errorMessage && (
+            <div className="text-xs text-red-400">{errorMessage}</div>
+          )}
+          {depositId && (
+            <div className="text-xs text-gray-400">
+              Deposit ID: <span className="font-mono">{depositId}</span>
+            </div>
+          )}
+          {depositTxHash && (
+            <div className="text-xs text-gray-400">
+              Deposit tx hash: <span className="font-mono">{depositTxHash.slice(0, 6)}…{depositTxHash.slice(-4)}</span>
+            </div>
+          )}
+          {fillTxHash && (
+            <div className="text-xs text-gray-400">
+              Fill tx hash: <span className="font-mono">{fillTxHash.slice(0, 6)}…{fillTxHash.slice(-4)}</span>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
   );
 }
 

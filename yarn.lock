@@ -2,6 +2,11 @@
 # yarn lockfile v1
 
 
+"@across-protocol/app-sdk@^0.4.2":
+  version "0.4.2"
+  resolved "https://registry.npmjs.org/@across-protocol/app-sdk/-/app-sdk-0.4.2.tgz"
+  integrity sha512-YjB/0g4MflvOObEP7Gzln0kdrbToAegatR5DIqsu1P5o+9qE2G4NBSzUvfgLqq3mdMeHAdx1jNVHA8WdoTRtCg==
+
 "@adraffy/ens-normalize@^1.10.1", "@adraffy/ens-normalize@^1.11.0":
   version "1.11.1"
   resolved "https://registry.npmjs.org/@adraffy/ens-normalize/-/ens-normalize-1.11.1.tgz"
