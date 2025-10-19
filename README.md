@@ -1,6 +1,6 @@
 # DeOperator
 
-A modern, AI-powered interface for trading through CoW Protocol using natural language. Built with Next.js 15, Vercel AI SDK, and Moralis data services.
+A modern, AI-powered interface for trading through CoW Protocol and staking via Morpho using natural language. Built with Next.js 15, Vercel AI SDK, and Moralis data services.
 
 ## Features
 
@@ -9,6 +9,7 @@ A modern, AI-powered interface for trading through CoW Protocol using natural la
 - **Real-time Quotes**: Get instant intent-based quotes from CoW Protocol before executing trades
 - **Wallet Integration**: Secure wallet connection using Wagmi and WalletConnect
 - **Direct Execution**: Trades execute directly through CoW Protocol batch auctions
+- **Morpho Staking**: Surface top USDC and WETH vaults on Ethereum, Arbitrum, and Base with built-in approvals
 - **Multi-Token Support**: Trade popular tokens including WETH, USDC, USDT, DAI, WBTC, and UNI
 
 ## Tech Stack
@@ -16,7 +17,7 @@ A modern, AI-powered interface for trading through CoW Protocol using natural la
 - **Frontend**: Next.js 15 (App Router), React 19, TypeScript, Tailwind CSS
 - **AI**: Vercel AI SDK with OpenAI GPT-4
 - **Web3**: Wagmi, Viem, Ethers.js v6
-- **DeFi**: CoW Protocol Trading SDK, Moralis API
+- **DeFi**: CoW Protocol Trading SDK, Morpho Blue SDK, Moralis API
 - **State Management**: TanStack React Query
 
 ## Prerequisites
@@ -86,6 +87,7 @@ Open [http://localhost:3000](http://localhost:3000) in your browser.
    - "Get me a quote for 100 USDC to DAI"
    - "What's the price of WBTC?"
    - "Trade 0.5 ETH for USDT"
+   - "What are the staking options for USDC on Base?"
 3. **Review & Confirm**: The AI will get a quote and ask for confirmation
 4. **Execute Trade**: Confirm in your wallet to complete the swap
 
@@ -109,6 +111,7 @@ deoperator/
 │       ├── chains.ts               # Supported chain constants & helpers
 │       ├── coingecko.ts            # CoinGecko search & metadata helpers
 │       ├── cowswap-client.ts       # Client-side CoW Protocol SDK wrapper
+│       ├── morpho-client.ts        # Morpho vault discovery & staking utilities
 │       ├── prices.ts               # Moralis USD price lookups
 │       ├── tokens.ts               # Token registry with CoinGecko fallback
 │       ├── wallet-balances.ts      # Moralis wallet balance helpers
@@ -126,6 +129,7 @@ deoperator/
 - Implements tool calling for:
   - `getSwapQuote`: Resolves token metadata and performs liquidity pre-checks before the client fetches a CoW quote
   - `createOrder`: Supplies the client with all parameters needed for Trading SDK order creation
+  - `getMorphoStakingOptions`: Fetches Morpho vault stats for USDC/WETH staking on supported chains
   - `getTokenInfo`: Returns token details
   - `getTokenUSDPrice`: Fetches USD pricing via Moralis
   - `getWalletBalances` / `getSpecificBalances`: Summaries and token-specific balances via Moralis
@@ -134,6 +138,11 @@ deoperator/
 
 - Wraps the CoW Protocol Trading SDK for browser-side quoting and order submission
 - Provides helpers to check allowances and perform approvals where necessary
+
+### Morpho Client (`src/lib/morpho-client.ts`)
+
+- Queries the Morpho GraphQL API for top vaults by TVL on Ethereum, Arbitrum, and Base
+- Exposes allowance checks, approval calls, and ERC-4626 deposits using the Morpho Blue viem SDK
 
 ### Chat UI (`src/components/Chat.tsx`)
 

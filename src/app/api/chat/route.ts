@@ -12,12 +12,20 @@ import {
   getCoinDetailsBySymbol,
   getChainIdForPlatform
 } from "@/lib/coingecko";
-import { createPublicClient, http, type Address } from "viem";
+import { createPublicClient, http, type Address, formatUnits } from "viem";
 import {
   isNativeCurrency,
   getNativeCurrency,
   NATIVE_CURRENCY_ADDRESS
 } from "@/lib/native-currencies";
+import {
+  fetchTopMorphoVault,
+  SUPPORTED_MORPHO_ASSETS,
+  SUPPORTED_MORPHO_CHAIN_IDS,
+  type SupportedMorphoAsset,
+  type SupportedMorphoChainId
+} from "@/lib/morpho-client";
+import { formatCompactNumber } from "@/lib/utils";
 
 export const maxDuration = 30;
 
@@ -107,6 +115,14 @@ export async function POST(req: Request) {
       - Supports thousands of verified tokens via curated lists and CoinGecko enrichment
       - Popular tokens: WETH, USDC, USDT, DAI, WBTC, LINK, AAVE, ARB, cbETH, etc.
       - Bridged and wrapped assets exist across networks (e.g., WETH on Base). Always confirm the chain the user specifies.
+
+      🟦 STAKING VIA MORPHO:
+      - Offer staking only on Ethereum (1), Arbitrum (42161), and Base (8453) using Morpho vaults.
+      - Supported staking assets: USDC and WETH. If a user requests any other asset, explain staking is currently limited to those two.
+      - ALWAYS confirm both the chain and the token before calling the staking tool.
+      - If a user asks for staking options without choosing a token, ask: "Which token would you like to stake, USDC or WETH?"
+      - Call getMorphoStakingOptions after you have chainId + token, then describe APY and deposits in plain language (no need to repeat the vault brand name).
+      - Remind the user they can press the Stake button in the UI when ready; approvals are handled automatically client-side.
 
       🔥 NATIVE CURRENCY SUPPORT:
       - Native blockchain tokens (ETH on Ethereum/Arbitrum/Base) are FULLY SUPPORTED
@@ -444,6 +460,146 @@ export async function POST(req: Request) {
               );
               return exceptionResult;
             }
+          }
+        }),
+        getMorphoStakingOptions: tool({
+          description:
+            "Fetch the highest TVL Morpho staking vault for USDC or WETH on a supported chain. Only use this after the user has confirmed both chain and token for staking.",
+          inputSchema: z.object({
+            tokenSymbol: z
+              .string()
+              .describe("Token to stake. Only USDC or WETH are currently supported."),
+            chainId: z
+              .number()
+              .describe("Chain to stake on. Only 1 (Ethereum), 42161 (Arbitrum), or 8453 (Base) are supported.")
+          }),
+          execute: async ({ tokenSymbol, chainId }) => {
+            console.log("[TOOL:getMorphoStakingOptions] Fetching staking vault:", {
+              tokenSymbol,
+              chainId
+            });
+
+            if (
+              !SUPPORTED_MORPHO_CHAIN_IDS.includes(
+                chainId as SupportedMorphoChainId
+              )
+            ) {
+              return toolError({
+                success: false,
+                userMessage:
+                  "I can set up staking on Ethereum, Arbitrum, or Base right now. Which of those chains would you like to use?",
+                error: `Unsupported staking chain: ${chainId}`
+              });
+            }
+
+            const normalizedSymbol = normalizeTokenSymbol(tokenSymbol, chainId);
+            const upperSymbol = normalizedSymbol.toUpperCase();
+
+            if (
+              !SUPPORTED_MORPHO_ASSETS.includes(
+                upperSymbol as SupportedMorphoAsset
+              )
+            ) {
+              return toolError({
+                success: false,
+                userMessage:
+                  "Morpho staking is currently available for USDC and WETH only. Want to pick one of those?",
+                error: `Unsupported staking asset: ${tokenSymbol}`
+              });
+            }
+
+            const assetSymbol = upperSymbol as SupportedMorphoAsset;
+
+            const vault = await fetchTopMorphoVault({
+              chainId,
+              assetSymbol
+            });
+
+            if (!vault) {
+              return toolError({
+                success: false,
+                userMessage:
+                  "I couldn't find an active vault for that chain right now. Pick a different supported chain and I can try again.",
+                error: `No vault data for ${assetSymbol} on ${chainId}`
+              });
+            }
+
+            const apyValue = vault.netApy ?? vault.apy;
+            const apyPercent =
+              apyValue !== null && apyValue !== undefined
+                ? (apyValue * 100).toFixed(2)
+                : null;
+
+            const tvlUsd = vault.tvlUsd ?? null;
+            const totalAssetsHuman =
+              vault.totalAssets && vault.assetDecimals !== undefined
+                ? formatUnits(BigInt(vault.totalAssets), vault.assetDecimals)
+                : null;
+
+            const totalAssetsNumber =
+              totalAssetsHuman !== null
+                ? Number.parseFloat(totalAssetsHuman)
+                : null;
+
+            const totalAssetsCompact =
+              totalAssetsNumber !== null && Number.isFinite(totalAssetsNumber)
+                ? formatCompactNumber(totalAssetsNumber, { fullDigits: 2 })
+                : null;
+
+            const tvlCompact =
+              tvlUsd !== null
+                ? formatCompactNumber(tvlUsd, { fullDigits: 0 })
+                : null;
+
+            const chainName = vault.chainLabel;
+
+            const messageParts: string[] = [
+              `Here's the most liquid ${assetSymbol} vault I can access on ${chainName}.`
+            ];
+
+            if (apyPercent) {
+              messageParts.push(
+                `It is currently yielding about ${apyPercent}% APY.`
+              );
+            }
+
+            if (totalAssetsCompact && tvlCompact) {
+              messageParts.push(
+                `Deposits sit around ${totalAssetsCompact.short} ${assetSymbol} (≈$${tvlCompact.short}).`
+              );
+            } else if (totalAssetsCompact) {
+              messageParts.push(
+                `Deposits sit around ${totalAssetsCompact.short} ${assetSymbol}.`
+              );
+            } else if (tvlCompact) {
+              messageParts.push(
+                `Deposits sit around ~$${tvlCompact.short}.`
+              );
+            }
+
+            messageParts.push(
+              "You can press the Stake button when you're ready and I'll take it from there."
+            );
+
+            return toolSuccess({
+              success: true,
+              message: messageParts.join(" "),
+              stakingOptions: {
+                needsClientStaking: true,
+                chainId: vault.chainId,
+                chainLabel: vault.chainLabel,
+                tokenSymbol: vault.assetSymbol,
+                vaultAddress: vault.vaultAddress,
+                vaultName: vault.vaultName,
+                vaultSymbol: vault.vaultSymbol,
+                assetAddress: vault.assetAddress,
+                assetDecimals: vault.assetDecimals,
+                apy: vault.apy,
+                netApy: vault.netApy,
+                tvlUsd: vault.tvlUsd,
+                totalAssets: vault.totalAssets
+              }
+            });
           }
         }),
         createOrder: tool({

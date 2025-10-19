@@ -1,7 +1,7 @@
 "use client";
 
 import { useChat } from "@ai-sdk/react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { DefaultChatTransport } from "ai";
 import {
   useAccount,
@@ -14,8 +14,14 @@ import {
   getCowProtocolAllowance,
   approveCowProtocol
 } from "@/lib/cowswap-client";
+import {
+  approveMorphoVault,
+  depositIntoMorphoVault,
+  getMorphoVaultAllowance
+} from "@/lib/morpho-client";
 import { NATIVE_CURRENCY_ADDRESS } from "@/lib/native-currencies";
-import type { Address } from "viem";
+import { formatCompactNumber } from "@/lib/utils";
+import type { Address, PublicClient, WalletClient } from "viem";
 import { formatUnits, parseUnits } from "viem";
 
 // Global ref to track the latest quote timestamp and listeners
@@ -24,6 +30,171 @@ const quoteListeners = new Set<() => void>();
 
 function notifyQuoteChange() {
   quoteListeners.forEach((listener) => listener());
+}
+
+type MorphoStakingOption = {
+  needsClientStaking: true;
+  chainId: number;
+  chainLabel: string;
+  tokenSymbol: string;
+  vaultAddress: Address;
+  vaultName?: string;
+  vaultSymbol?: string;
+  assetAddress: Address;
+  assetDecimals: number;
+  apy: number | null;
+  netApy: number | null;
+  tvlUsd: number | null;
+  totalAssets: string | null;
+};
+
+async function ensureClientsOnChain({
+  targetChainId,
+  address,
+  publicClient,
+  walletClient
+}: {
+  targetChainId: number;
+  address?: Address;
+  publicClient?: PublicClient;
+  walletClient?: WalletClient;
+}): Promise<{
+  publicClient: PublicClient;
+  walletClient: WalletClient;
+}> {
+  if (!address) {
+    throw new Error("WALLET_NOT_CONNECTED");
+  }
+
+  const { wagmiAdapter } = await import("@/lib/wagmi");
+  const { getWalletClient, getPublicClient } = await import("wagmi/actions");
+
+  let resolvedWalletClient: WalletClient | undefined = walletClient;
+  if (!resolvedWalletClient) {
+    resolvedWalletClient = await getWalletClient(wagmiAdapter.wagmiConfig, {
+      account: address,
+      assertChainId: false
+    });
+  }
+
+  if (!resolvedWalletClient) {
+    throw new Error("WALLET_CLIENT_UNAVAILABLE");
+  }
+
+  if (resolvedWalletClient.chain?.id !== targetChainId) {
+    try {
+      const { switchChain } = await import("@wagmi/core");
+      await switchChain(wagmiAdapter.wagmiConfig, {
+        chainId: targetChainId
+      });
+      resolvedWalletClient = await getWalletClient(wagmiAdapter.wagmiConfig, {
+        account: address,
+        assertChainId: false
+      });
+    } catch (switchError) {
+      if (
+        switchError instanceof Error &&
+        (switchError.name === "UserRejectedRequestError" ||
+          switchError.message.toLowerCase().includes("user rejected"))
+      ) {
+        throw new Error("USER_REJECTED_SWITCH");
+      }
+      if (
+        switchError instanceof Error &&
+        switchError.name === "SwitchChainNotSupportedError"
+      ) {
+        throw new Error("SWITCH_NOT_SUPPORTED");
+      }
+      throw switchError instanceof Error
+        ? switchError
+        : new Error("SWITCH_FAILED");
+    }
+  }
+
+  if (resolvedWalletClient.chain?.id !== targetChainId) {
+    throw new Error("CHAIN_NOT_MATCHING");
+  }
+
+  let resolvedPublicClient: PublicClient | undefined = publicClient;
+  if (
+    !resolvedPublicClient ||
+    resolvedPublicClient.chain?.id !== targetChainId
+  ) {
+    resolvedPublicClient = await getPublicClient(wagmiAdapter.wagmiConfig, {
+      chainId: targetChainId
+    });
+  }
+
+  if (!resolvedPublicClient) {
+    throw new Error("PUBLIC_CLIENT_UNAVAILABLE");
+  }
+
+  return {
+    publicClient: resolvedPublicClient,
+    walletClient: resolvedWalletClient
+  };
+}
+
+function describeSwitchError(
+  error: unknown,
+  chainLabel: string
+): { message: string; manualSwitch: boolean } {
+  if (error instanceof Error) {
+    if (error.message === "WALLET_NOT_CONNECTED") {
+      return {
+        message: "Connect your wallet to continue.",
+        manualSwitch: false
+      };
+    }
+
+    if (error.message === "USER_REJECTED_SWITCH") {
+      return {
+        message: `Looks like you cancelled the network switch. Approve the request to continue on ${chainLabel}.`,
+        manualSwitch: false
+      };
+    }
+
+    if (error.message === "SWITCH_NOT_SUPPORTED") {
+      return {
+        message: `Your wallet can't change networks automatically. Please switch to ${chainLabel} in your wallet and try again.`,
+        manualSwitch: true
+      };
+    }
+
+    if (error.message === "CHAIN_NOT_MATCHING") {
+      return {
+        message: `We couldn't confirm the network change. Switch to ${chainLabel} manually and try once more.`,
+        manualSwitch: true
+      };
+    }
+
+    if (error.message === "WALLET_CLIENT_UNAVAILABLE") {
+      return {
+        message:
+          "I couldn't reach your wallet. Try reconnecting it and then retry.",
+        manualSwitch: false
+      };
+    }
+
+    if (error.message === "PUBLIC_CLIENT_UNAVAILABLE") {
+      return {
+        message:
+          "Unable to reach the selected network right now. Please try again shortly.",
+        manualSwitch: false
+      };
+    }
+
+    return {
+      message: error.message,
+      manualSwitch: true
+    };
+  }
+
+  return {
+    message:
+      "We couldn't prepare your wallet for this network. Switch networks manually and try again.",
+    manualSwitch: true
+  };
 }
 
 export function Chat() {
@@ -186,6 +357,19 @@ export function Chat() {
               >
                 Show me the best rate for 0.5 ETH to USDT
               </button>
+              <button
+                onClick={() => {
+                  if (address) {
+                    sendMessage({
+                      text: "What are the staking options for USDC on Base?"
+                    });
+                  }
+                }}
+                disabled={!address}
+                className="w-full glass rounded-lg px-3 sm:px-4 py-2 text-gray-300 hover:bg-white/10 transition-colors cursor-pointer text-left disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                What are the staking options for USDC on Base?
+              </button>
             </div>
           </div>
         )}
@@ -247,6 +431,20 @@ export function Chat() {
                             <QuoteDisplay
                               key={index}
                               tokenInfo={output}
+                              publicClient={publicClient}
+                              walletClient={walletClient}
+                              address={address}
+                            />
+                          );
+                        }
+
+                        const stakingInfo = output
+                          ?.stakingOptions as MorphoStakingOption | undefined;
+                        if (stakingInfo?.needsClientStaking) {
+                          return (
+                            <MorphoStakingCard
+                              key={index}
+                              stakingInfo={stakingInfo}
                               publicClient={publicClient}
                               walletClient={walletClient}
                               address={address}
@@ -484,8 +682,8 @@ export function Chat() {
             onChange={(e) => setInput(e.target.value)}
             placeholder={
               address
-                ? "Ask me to swap tokens..."
-                : "Connect your wallet to start trading"
+                ? "Ask me to trade or stake tokens..."
+                : "Connect your wallet to start trading or staking"
             }
             disabled={!address || status === "streaming"}
             className="flex-1 px-0 py-2 sm:py-3 bg-transparent focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed text-white placeholder:text-gray-500 text-sm sm:text-base caret-emerald-500"
@@ -637,6 +835,380 @@ function EntireBalanceQuoteDisplay({
         address={address}
       />
     </>
+  );
+}
+
+function MorphoStakingCard({
+  stakingInfo,
+  publicClient,
+  walletClient,
+  address
+}: {
+  stakingInfo: MorphoStakingOption;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  publicClient: any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  walletClient: any;
+  address?: Address;
+}) {
+  const [amount, setAmount] = useState("");
+  const [actionState, setActionState] = useState<
+    | "idle"
+    | "checking-allowance"
+    | "approval"
+    | "staking"
+    | "success"
+    | "error"
+  >("idle");
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [transactionHash, setTransactionHash] = useState<string | null>(null);
+
+  const walletChainId = walletClient?.chain?.id;
+  const chainMismatch =
+    walletChainId !== undefined && walletChainId !== stakingInfo.chainId;
+
+  const explorerBaseUrl = useMemo(() => {
+    switch (stakingInfo.chainId) {
+      case 1:
+        return "https://etherscan.io/tx/";
+      case 42161:
+        return "https://arbiscan.io/tx/";
+      case 8453:
+        return "https://basescan.org/tx/";
+      default:
+        return null;
+    }
+  }, [stakingInfo.chainId]);
+
+  const { data: balance, isLoading: balanceLoading, refetch } = useBalance({
+    address,
+    chainId: stakingInfo.chainId,
+    token: stakingInfo.assetAddress
+  });
+
+  const apyDisplay =
+    stakingInfo.netApy !== null && stakingInfo.netApy !== undefined
+      ? (stakingInfo.netApy * 100).toFixed(2)
+      : stakingInfo.apy !== null && stakingInfo.apy !== undefined
+      ? (stakingInfo.apy * 100).toFixed(2)
+      : null;
+
+  const totalAssetsNumber =
+    stakingInfo.totalAssets && stakingInfo.assetDecimals !== undefined
+      ? Number.parseFloat(
+          formatUnits(
+            BigInt(stakingInfo.totalAssets),
+            stakingInfo.assetDecimals
+          )
+        )
+      : null;
+
+  const totalAssetsCompact =
+    totalAssetsNumber !== null && Number.isFinite(totalAssetsNumber)
+      ? formatCompactNumber(totalAssetsNumber, { fullDigits: 2 })
+      : null;
+
+  const tvlCompact =
+    stakingInfo.tvlUsd !== null && stakingInfo.tvlUsd !== undefined
+      ? formatCompactNumber(stakingInfo.tvlUsd, { fullDigits: 0 })
+      : null;
+
+  const balanceDisplay = balance
+    ? `${parseFloat(balance.formatted).toLocaleString(undefined, {
+        maximumFractionDigits:
+          stakingInfo.assetDecimals > 6 ? 6 : stakingInfo.assetDecimals
+      })} ${stakingInfo.tokenSymbol}`
+    : `0 ${stakingInfo.tokenSymbol}`;
+
+  const parsedAmount = (() => {
+    if (!amount) return null;
+    try {
+      return parseUnits(amount, stakingInfo.assetDecimals);
+    } catch {
+      return null;
+    }
+  })();
+
+  const isAmountValid =
+    parsedAmount !== null &&
+    parsedAmount > BigInt(0) &&
+    !Number.isNaN(Number(amount));
+  const hasSufficientBalance =
+    parsedAmount !== null && balance ? balance.value >= parsedAmount : false;
+
+  const stakeDisabled =
+    !address ||
+    !isAmountValid ||
+    !hasSufficientBalance ||
+    balanceLoading ||
+    actionState === "checking-allowance" ||
+    actionState === "approval" ||
+    actionState === "staking";
+
+  const liquidityLabel = (() => {
+    if (totalAssetsCompact && tvlCompact) {
+      return `≈${totalAssetsCompact.short} ${stakingInfo.tokenSymbol} ($${tvlCompact.short})`;
+    }
+    if (totalAssetsCompact) {
+      return `≈${totalAssetsCompact.short} ${stakingInfo.tokenSymbol}`;
+    }
+    if (tvlCompact) {
+      return `≈$${tvlCompact.short}`;
+    }
+    return "Unknown";
+  })();
+
+  const liquidityTitle = (() => {
+    if (totalAssetsCompact && tvlCompact) {
+      return `${totalAssetsCompact.full} ${stakingInfo.tokenSymbol} • $${tvlCompact.full}`;
+    }
+    if (totalAssetsCompact) {
+      return `${totalAssetsCompact.full} ${stakingInfo.tokenSymbol}`;
+    }
+    if (tvlCompact) {
+      return `$${tvlCompact.full}`;
+    }
+    return "Liquidity unavailable";
+  })();
+
+  const handleMax = () => {
+    if (balance) {
+      setAmount(balance.formatted);
+    }
+  };
+
+  const handleStake = async () => {
+    setErrorMessage(null);
+    setTransactionHash(null);
+
+    if (!address) {
+      setErrorMessage("Connect your wallet to proceed.");
+      return;
+    }
+
+    if (!parsedAmount || parsedAmount <= BigInt(0)) {
+      setErrorMessage("Enter a valid amount to stake.");
+      return;
+    }
+
+    if (!hasSufficientBalance) {
+      setErrorMessage(
+        `You don't have enough ${stakingInfo.tokenSymbol} to stake that amount.`
+      );
+      return;
+    }
+
+    setActionState("checking-allowance");
+
+    let activePublicClient;
+    let activeWalletClient;
+
+    try {
+      const clients = await ensureClientsOnChain({
+        targetChainId: stakingInfo.chainId,
+        address,
+        publicClient,
+        walletClient
+      });
+
+      activePublicClient = clients.publicClient;
+      activeWalletClient = clients.walletClient;
+    } catch (err) {
+      console.error("[CLIENT] Morpho staking network preparation error:", err);
+      const { message } = describeSwitchError(
+        err,
+        stakingInfo.chainLabel
+      );
+      setActionState("error");
+      setErrorMessage(message);
+      return;
+    }
+
+    try {
+      await refetch?.();
+
+      const ownerAddress = address as Address;
+
+      const allowance = await getMorphoVaultAllowance(activePublicClient, {
+        assetAddress: stakingInfo.assetAddress,
+        owner: ownerAddress,
+        vaultAddress: stakingInfo.vaultAddress
+      });
+
+      if (allowance < parsedAmount) {
+        setActionState("approval");
+        const approvalHash = await approveMorphoVault(activeWalletClient, {
+          assetAddress: stakingInfo.assetAddress,
+          owner: ownerAddress,
+          vaultAddress: stakingInfo.vaultAddress,
+          amount: parsedAmount
+        });
+
+        await activePublicClient.waitForTransactionReceipt({
+          hash: approvalHash
+        });
+      }
+
+      setActionState("staking");
+      const stakeHash = await depositIntoMorphoVault(activeWalletClient, {
+        vaultAddress: stakingInfo.vaultAddress,
+        owner: ownerAddress,
+        assets: parsedAmount,
+        receiver: ownerAddress
+      });
+
+      setTransactionHash(stakeHash);
+
+      await activePublicClient.waitForTransactionReceipt({
+        hash: stakeHash
+      });
+
+      await refetch?.();
+
+      setActionState("success");
+      setAmount("");
+      setErrorMessage(null);
+    } catch (err) {
+      console.error("[CLIENT] Morpho staking error:", err);
+      setActionState("error");
+      setErrorMessage(
+        err instanceof Error
+          ? err.message
+          : "Something went wrong while staking."
+      );
+    }
+  };
+
+  return (
+    <div className="mt-3 pt-3 border-t border-white/10">
+      <div className="glass-strong rounded-lg p-4 space-y-4">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <div className="flex items-center gap-2 text-xs uppercase tracking-wide text-primary-300">
+              <span className="inline-flex h-2 w-2 rounded-full bg-primary-400"></span>
+              Morpho Staking
+            </div>
+            <div className="text-lg font-semibold text-white mt-1">
+              {stakingInfo.tokenSymbol} on {stakingInfo.chainLabel}
+            </div>
+            <div className="text-xs text-gray-400">
+              Vault address:{" "}
+              <span className="font-mono text-[11px] text-gray-300">
+                {stakingInfo.vaultAddress.slice(0, 6)}…
+                {stakingInfo.vaultAddress.slice(-4)}
+              </span>
+            </div>
+          </div>
+          <div className="flex gap-4 text-sm">
+            <div>
+              <div className="text-gray-400 text-xs uppercase">Net APY</div>
+              <div className="text-white font-semibold">
+                {apyDisplay ? `${apyDisplay}%` : "Unknown"}
+              </div>
+            </div>
+            <div>
+              <div className="text-gray-400 text-xs uppercase">
+                Liquidity
+              </div>
+              <div className="text-white font-semibold">
+                <span title={liquidityTitle}>{liquidityLabel}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-black/30 rounded-xl border border-white/10 p-3 space-y-3">
+          <div className="flex items-center justify-between text-xs text-gray-400">
+            <span>Available balance</span>
+            <span>{balanceLoading ? "Checking..." : balanceDisplay}</span>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <input
+              type="text"
+              inputMode="decimal"
+              value={amount}
+              onChange={(event) => {
+                setAmount(event.target.value);
+                setErrorMessage(null);
+                if (actionState === "success" || actionState === "error") {
+                  setActionState("idle");
+                }
+              }}
+              placeholder={`Amount of ${stakingInfo.tokenSymbol} to stake`}
+              className="flex-1 bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-primary-500/60"
+            />
+            <button
+              type="button"
+              onClick={handleMax}
+              className="px-3 py-2 text-xs border border-white/10 rounded-lg text-gray-300 hover:bg-white/10 transition-colors"
+              disabled={!balance || balance.value === BigInt(0)}
+            >
+              Max
+            </button>
+            <button
+              type="button"
+              onClick={handleStake}
+              disabled={stakeDisabled}
+              className="px-4 py-2 text-sm font-medium rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed bg-emerald-600 hover:bg-emerald-500 text-white"
+            >
+              {actionState === "checking-allowance"
+                ? "Checking..."
+                : actionState === "approval"
+                ? "Approving..."
+                : actionState === "staking"
+                ? "Staking..."
+                : actionState === "success"
+                ? "Staked"
+                : "Stake"}
+            </button>
+          </div>
+
+          {chainMismatch && (
+            <div className="text-xs text-amber-400">
+              We&apos;ll prompt your wallet to switch to {stakingInfo.chainLabel} when you stake. If nothing pops up, change networks manually.
+            </div>
+          )}
+          {!hasSufficientBalance && isAmountValid && !balanceLoading && (
+            <div className="text-xs text-amber-400">
+              Insufficient {stakingInfo.tokenSymbol} balance for this stake.
+            </div>
+          )}
+          {!isAmountValid && amount && (
+            <div className="text-xs text-amber-400">
+              Enter a valid amount using numbers and decimals only.
+            </div>
+          )}
+          {errorMessage && (
+            <div className="text-xs text-red-400">{errorMessage}</div>
+          )}
+          {transactionHash && (
+            <div className="text-xs text-emerald-400">
+              Stake transaction:{" "}
+              {explorerBaseUrl ? (
+                <a
+                  href={`${explorerBaseUrl}${transactionHash}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="font-mono underline-offset-2 hover:underline"
+                >
+                  {transactionHash.slice(0, 6)}…{transactionHash.slice(-4)}
+                </a>
+              ) : (
+                <span className="font-mono">
+                  {transactionHash.slice(0, 6)}…{transactionHash.slice(-4)}
+                </span>
+              )}
+            </div>
+          )}
+        </div>
+
+        <div className="text-[11px] text-gray-500">
+          Powered by Morpho. Approvals and staking transactions will use your
+          connected wallet.
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -1351,9 +1923,11 @@ function CreateOrderButton({
 
   useEffect(() => {
     if (chainMismatch) {
-      setChainWarning(
-        `Switch your wallet to ${expectedChainLabel} before creating the order.`
-      );
+      if (orderStatus === "idle") {
+        setChainWarning(
+          `You'll be prompted to switch to ${expectedChainLabel} when you submit. If nothing appears, change networks in your wallet.`
+        );
+      }
     } else {
       setChainWarning(null);
       // Clear stale errors so the button becomes actionable after switching
@@ -1364,53 +1938,77 @@ function CreateOrderButton({
   }, [chainMismatch, expectedChainLabel, errorMessage, orderStatus]);
 
   const handleClick = async () => {
-    if (chainMismatch) {
-      setChainWarning(
-        `Switch your wallet to ${expectedChainLabel} before creating the order.`
-      );
-      return;
-    }
-
-    if (!publicClient || !walletClient || !address) {
+    if (!address) {
       setErrorMessage("Please connect your wallet");
       setOrderStatus("error");
       return;
     }
 
+    setErrorMessage(null);
+    setOrderStatus("checking-approval");
+    setIsCheckingApproval(true);
+    onOrderStatusChange?.(true);
+
+    let activePublicClient;
+    let activeWalletClient;
+
     try {
-      // Notify parent that order is in progress
-      onOrderStatusChange?.(true);
+      const clients = await ensureClientsOnChain({
+        targetChainId: tokenInfo.chainId,
+        address,
+        publicClient,
+        walletClient
+      });
 
-      // Step 1: Check and handle approval if needed
-      if (!isApproved) {
-        if (isNativeCurrencyTrade) {
-          setIsApproved(true);
-        } else {
-          setOrderStatus("checking-approval");
-
-          const allowance = await getCowProtocolAllowance(
-            publicClient,
-            walletClient,
-            {
-              tokenAddress: tokenInfo.fromTokenAddress as Address,
-              owner: address,
-              chainId: tokenInfo.chainId
-            }
-          );
-
-          if (allowance < requiredAmount) {
-            setOrderStatus("approving");
-
-            await approveCowProtocol(publicClient, walletClient, {
-              tokenAddress: tokenInfo.fromTokenAddress as Address,
-              amount: requiredAmount,
-              chainId: tokenInfo.chainId
-            });
-          }
-
-          setIsApproved(true);
-        }
+      activePublicClient = clients.publicClient;
+      activeWalletClient = clients.walletClient;
+      setChainWarning(null);
+    } catch (err) {
+      console.error("[CLIENT] Failed to prepare clients for order:", err);
+      const { message, manualSwitch } = describeSwitchError(
+        err,
+        expectedChainLabel
+      );
+      if (manualSwitch) {
+        setChainWarning(
+          `Switch your wallet to ${expectedChainLabel} and try again.`
+        );
       }
+      setErrorMessage(message);
+      setOrderStatus("error");
+      setIsCheckingApproval(false);
+      onOrderStatusChange?.(false);
+      return;
+    }
+
+    try {
+      if (!isNativeCurrencyTrade) {
+        const allowance = await getCowProtocolAllowance(
+          activePublicClient,
+          activeWalletClient,
+          {
+            tokenAddress: tokenInfo.fromTokenAddress as Address,
+            owner: address,
+            chainId: tokenInfo.chainId
+          }
+        );
+
+        if (allowance < requiredAmount) {
+          setOrderStatus("approving");
+
+          await approveCowProtocol(activePublicClient, activeWalletClient, {
+            tokenAddress: tokenInfo.fromTokenAddress as Address,
+            amount: requiredAmount,
+            chainId: tokenInfo.chainId
+          });
+        }
+
+        setIsApproved(true);
+      } else {
+        setIsApproved(true);
+      }
+
+      setIsCheckingApproval(false);
 
       // Step 2: Create and submit the order
       setOrderStatus("creating");
@@ -1442,9 +2040,9 @@ function CreateOrderButton({
         err instanceof Error ? err.message : "Failed to submit order"
       );
       setOrderStatus("error");
-
-      // Notify parent that order is complete (but with error, so timer can resume)
       onOrderStatusChange?.(false);
+    } finally {
+      setIsCheckingApproval(false);
     }
   };
 
@@ -1519,11 +2117,10 @@ function CreateOrderButton({
         disabled={
           !isLatestQuote ||
           !address ||
-          orderStatus !== "idle" ||
+          (orderStatus !== "idle" && orderStatus !== "error") ||
           !hasEnoughBalance ||
           balanceLoading ||
-          isCheckingApproval ||
-          chainMismatch
+          isCheckingApproval
         }
         className={`w-full px-4 py-3 rounded-lg font-semibold text-sm transition-all ${
           !isLatestQuote
@@ -1531,11 +2128,9 @@ function CreateOrderButton({
             : !address ||
               !hasEnoughBalance ||
               balanceLoading ||
-              isCheckingApproval ||
-              orderStatus === "error" ||
-              chainMismatch
+              isCheckingApproval
             ? "bg-gray-700 text-gray-400 cursor-not-allowed"
-            : orderStatus !== "idle"
+            : orderStatus !== "idle" && orderStatus !== "error"
             ? "bg-emerald-600 text-white cursor-wait"
             : "bg-emerald-600 hover:bg-emerald-500 text-white"
         }`}
