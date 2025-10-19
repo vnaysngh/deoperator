@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useRef, useEffect } from "react";
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport } from "ai";
 
@@ -27,11 +27,9 @@ interface Props {
 }
 
 export function FloatingTransactionsChat({ transactions, walletAddress }: Props) {
-  const [input, setInput] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
 
-  const { messages, sendMessage, status } = useChat({
+  const { messages, status } = useChat({
     transport: new DefaultChatTransport({
       api: "/api/transactions-chat",
       fetch: async (input: RequestInfo | URL, init?: RequestInit) => {

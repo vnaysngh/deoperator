@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useAccount } from "wagmi";
 import { useQuery } from "@tanstack/react-query";
 import { WalletConnect } from "@/components/WalletConnect";
@@ -21,7 +22,7 @@ interface Token {
   usd_value?: number | null;
 }
 
-interface Position {
+interface PositionData {
   protocol_name: string;
   protocol_id: string;
   protocol_url: string;
@@ -76,7 +77,7 @@ export default function PositionsPage() {
     isLoading: loading,
     error,
     refetch,
-  } = useQuery({
+  } = useQuery<PositionData[]>({
     queryKey: ["positions", address, chain?.id],
     queryFn: () => fetchPositions(address!, chain!.id),
     enabled: !!address && !!chain,
@@ -97,16 +98,6 @@ export default function PositionsPage() {
     }
   };
 
-  const getProtocolColor = (protocolId: string) => {
-    const colors: Record<string, string> = {
-      "uniswap-v2": "from-pink-500/20 to-purple-500/20 border-pink-500/30",
-      "uniswap-v3": "from-pink-500/20 to-purple-500/20 border-pink-500/30",
-      lido: "from-blue-500/20 to-cyan-500/20 border-blue-500/30",
-      "aave-v2": "from-purple-500/20 to-indigo-500/20 border-purple-500/30",
-      "aave-v3": "from-purple-500/20 to-indigo-500/20 border-purple-500/30",
-    };
-    return colors[protocolId] || "from-emerald-500/20 to-teal-500/20 border-emerald-500/30";
-  };
 
   return (
     <SidebarProvider>
@@ -244,9 +235,11 @@ export default function PositionsPage() {
                                   <td className="px-4 py-4">
                                     <div className="flex items-center gap-3">
                                       {position.protocol_logo ? (
-                                        <img
+                                        <Image
                                           src={position.protocol_logo}
                                           alt={position.protocol_name}
+                                          width={32}
+                                          height={32}
                                           className="w-8 h-8 rounded-lg"
                                           onError={(e) => {
                                             e.currentTarget.style.display = "none";
@@ -281,9 +274,11 @@ export default function PositionsPage() {
                                         .map((token, tidx) => (
                                           <div key={tidx} className="flex items-center gap-2">
                                             {token.logo && (
-                                              <img
+                                              <Image
                                                 src={token.logo}
                                                 alt={token.symbol}
+                                                width={16}
+                                                height={16}
                                                 className="w-4 h-4 rounded-full"
                                                 onError={(e) => {
                                                   e.currentTarget.style.display = "none";
@@ -348,7 +343,7 @@ export default function PositionsPage() {
           {/* Floating Chat */}
           <FloatingPositionsChat
             positions={positions}
-            walletAddress={DEMO_ADDRESS}
+            walletAddress={address}
           />
         </div>
       </SidebarInset>
