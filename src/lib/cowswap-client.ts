@@ -16,7 +16,11 @@ import { isAddress, type Address, type PublicClient, type WalletClient } from "v
 const PARTNER_FEE_BPS = 20;
 
 type PartnerFeeConfig = {
-  bps: number;
+  // Share of price improvement allocated to the partner (in bps)
+  priceImprovementBps: number;
+  // Max share of trade volume allocated to the partner (in bps)
+  maxVolumeBps: number;
+  // Recipient address for partner fees
   recipient: Address;
 };
 
@@ -41,8 +45,10 @@ function getPartnerFeeConfig(): PartnerFeeConfig {
     );
   }
 
+  // Use our configured bps for volume share; default price improvement share to 0 bps
   cachedPartnerFee = {
-    bps: PARTNER_FEE_BPS,
+    priceImprovementBps: 0,
+    maxVolumeBps: PARTNER_FEE_BPS,
     recipient: recipient as Address
   };
 
@@ -129,7 +135,8 @@ export async function getSwapQuote(
     sellTokenDecimals: params.sellTokenDecimals,
     buyTokenDecimals: params.buyTokenDecimals,
     userAddress: params.userAddress,
-    partnerFeeBps: partnerFee.bps,
+    partnerFeePriceImprovementBps: partnerFee.priceImprovementBps,
+    partnerFeeMaxVolumeBps: partnerFee.maxVolumeBps,
     partnerFeeRecipient: partnerFee.recipient
   });
   const sdk = createTradingSdk(publicClient, walletClient, params.chainId);

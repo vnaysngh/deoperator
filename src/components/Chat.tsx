@@ -495,7 +495,8 @@ export function Chat({ sessionId }: ChatProps) {
   return (
     <div className="bg-black rounded-2xl shadow-2xl flex flex-col max-h-[80vh] min-h-[70vh] w-full px-4 sm:px-6 overflow-x-hidden">
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto py-3 sm:py-6 space-y-4 overflow-x-hidden">
+      <div className="flex-1 overflow-y-auto py-3 sm:py-6 overflow-x-hidden [scrollbar-gutter:stable_both-edges]">
+        <div className="mx-auto w-full max-w-3xl space-y-4">
         {isHistoryLoading && messages.length === 0 && (
           <div className="h-full flex items-center justify-center text-center">
             <div className="flex items-center gap-2 text-gray-400 text-sm">
@@ -897,6 +898,7 @@ export function Chat({ sessionId }: ChatProps) {
         )}
 
         <div ref={messagesEndRef} />
+        </div>
       </div>
 
       {/* Input */}
@@ -912,7 +914,8 @@ export function Chat({ sessionId }: ChatProps) {
         }}
         className="py-3 sm:py-4 flex-shrink-0 w-full"
       >
-        <div className="flex items-center gap-2 border-b border-white/10 focus-within:border-emerald-500/50 transition-colors">
+        <div className="mx-auto w-full max-w-3xl">
+          <div className="flex items-center gap-2 border-b border-white/10 focus-within:border-emerald-500/50 transition-colors">
           <input
             ref={inputRef}
             value={input}
@@ -945,6 +948,7 @@ export function Chat({ sessionId }: ChatProps) {
               <path d="M5 12l7-7 7 7" />
             </svg>
           </button>
+        </div>
         </div>
       </form>
     </div>
