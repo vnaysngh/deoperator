@@ -14,7 +14,11 @@ import {
 import {
   ArrowLeftRight,
   Wallet,
-  BarChart3
+  BarChart3,
+  Clock,
+  Plus,
+  ChevronDown,
+  Trash2
   // TrendingUp,
   // History,
   // Shield,
@@ -22,8 +26,28 @@ import {
   // HelpCircle
 } from "lucide-react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
+import { useAccount } from "wagmi";
+import { useCallback, useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle
+} from "@/components/ui/alert-dialog";
+
+type SessionSummary = {
+  id: string;
+  title: string;
+  createdAt: string;
+  updatedAt: string;
+  lastActiveAt: string;
+};
 
 const menuItems = [
   { title: "Trade", icon: ArrowLeftRight, url: "/trade" },
@@ -39,18 +63,139 @@ const menuItems = [
   { title: "Help & Support", icon: HelpCircle, url: "/help" },
 ];
  */
+const formatRelativeTime = (input: string) => {
+  const date = new Date(input);
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+
+  const diff = Date.now() - date.getTime();
+  const minutes = Math.floor(diff / (1000 * 60));
+  if (minutes < 1) return "just now";
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  if (days < 7) return `${days}d ago`;
+  return date.toLocaleDateString();
+};
+
 export function AppSidebar() {
   const pathname = usePathname();
+  const router = useRouter();
+  const { address } = useAccount();
+  const normalizedAddress = address?.toLowerCase() ?? null;
+  const [historySessions, setHistorySessions] = useState<SessionSummary[]>([]);
+  const [historyOpen, setHistoryOpen] = useState(true);
+  const [deletingSessionId, setDeletingSessionId] = useState<string | null>(
+    null
+  );
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [sessionPendingDelete, setSessionPendingDelete] = useState<
+    SessionSummary | null
+  >(null);
+
+  const fetchHistorySessions = useCallback(async () => {
+    if (!normalizedAddress) {
+      setHistorySessions([]);
+      return;
+    }
+
+    try {
+      const response = await fetch("/api/chat/sessions", {
+        headers: {
+          "x-wallet-address": normalizedAddress
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error(await response.text());
+      }
+
+      const data = (await response.json()) as {
+        sessions: SessionSummary[];
+      };
+      setHistorySessions(data.sessions ?? []);
+    } catch (error) {
+      console.error("[SIDEBAR] Failed to fetch chat sessions:", error);
+    }
+  }, [normalizedAddress]);
+
+  const handleNewChat = useCallback(() => {
+    setHistoryOpen(true);
+    router.push("/trade");
+  }, [router]);
+
+  const performDeleteSession = useCallback(
+    async (sessionId: string) => {
+      setDeletingSessionId(sessionId);
+      try {
+        const response = await fetch("/api/chat/sessions", {
+          method: "DELETE",
+          headers: {
+            "Content-Type": "application/json",
+            ...(normalizedAddress
+              ? { "x-wallet-address": normalizedAddress }
+              : {})
+          },
+          body: JSON.stringify({ sessionId })
+        });
+
+        if (!response.ok && response.status !== 204) {
+          const text = await response.text();
+          throw new Error(text || "Failed to delete chat session");
+        }
+
+        await fetchHistorySessions();
+        if (pathname === `/trade/${sessionId}`) {
+          router.replace("/trade");
+        }
+      } catch (error) {
+        console.error("[SIDEBAR] Failed to delete session:", error);
+      } finally {
+        setDeletingSessionId(null);
+        setDeleteDialogOpen(false);
+        setSessionPendingDelete(null);
+      }
+    },
+    [fetchHistorySessions, normalizedAddress, pathname, router]
+  );
 
   const isActivePath = (url: string) => {
     if (url === "/trade") {
-      return pathname === url || pathname === "/";
+      return (
+        pathname === url || pathname === "/" || pathname.startsWith("/trade/")
+      );
     }
     return pathname === url || pathname.startsWith(`${url}/`);
   };
 
+  useEffect(() => {
+    fetchHistorySessions();
+  }, [fetchHistorySessions, pathname]);
+
+  useEffect(() => {
+    const handler = () => {
+      fetchHistorySessions();
+    };
+
+    window.addEventListener("chat-session-updated", handler);
+    return () => {
+      window.removeEventListener("chat-session-updated", handler);
+    };
+  }, [fetchHistorySessions]);
+
+  useEffect(() => {
+    if (!normalizedAddress) {
+      setHistorySessions([]);
+    }
+  }, [normalizedAddress]);
+
   return (
-    <Sidebar collapsible="icon" className="border-r border-white/5">
+    <Sidebar
+      collapsible="icon"
+      className="border-r border-white/5 w-64 max-w-xs shrink-0"
+    >
       <SidebarHeader className="border-b border-white/5">
         <SidebarMenu>
           <SidebarMenuItem>
@@ -114,29 +259,131 @@ export function AppSidebar() {
           </SidebarGroupContent>
         </SidebarGroup>
 
-        {/*   <SidebarGroup>
-          <SidebarGroupLabel className="text-gray-500 text-xs">
-            More
-          </SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              {secondaryItems.map((item) => (
-                <SidebarMenuItem key={item.title}>
-                  <SidebarMenuButton
-                    asChild
-                    className="hover:bg-white/5 hover:text-primary-400 transition-colors"
-                  >
-                    <a href={item.url}>
-                      <item.icon className="w-4 h-4" />
-                      <span>{item.title}</span>
-                    </a>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              ))}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup> */}
+        {normalizedAddress && (
+          <SidebarGroup>
+            <SidebarGroupLabel className="text-gray-500 text-xs flex items-center justify-between">
+              <button
+                type="button"
+                className="flex items-center gap-1 text-gray-500 hover:text-primary-400 transition-colors"
+                onClick={() => setHistoryOpen((prev) => !prev)}
+                aria-expanded={historyOpen}
+              >
+                <ChevronDown
+                  className={cn(
+                    "h-3 w-3 transition-transform",
+                    historyOpen ? "rotate-0" : "-rotate-90"
+                  )}
+                />
+                History
+              </button>
+              <button
+                type="button"
+                onClick={handleNewChat}
+                className="flex items-center gap-1 text-[11px] text-primary-400 hover:text-primary-300 transition-colors"
+              >
+                <Plus className="h-3 w-3" />
+                New
+              </button>
+            </SidebarGroupLabel>
+            {historyOpen && (
+              <SidebarGroupContent>
+                <SidebarMenu>
+                  {historySessions.length === 0 && (
+                    <SidebarMenuItem>
+                      <div className="px-3 py-2 text-xs text-gray-500">
+                        No chats yet.
+                      </div>
+                    </SidebarMenuItem>
+                  )}
+
+                  {historySessions.map((session) => {
+                    const sessionPath = `/trade/${session.id}`;
+                    const active = pathname === sessionPath;
+                    const title =
+                      session.title && session.title !== "New chat"
+                        ? session.title
+                        : "New chat";
+
+                    return (
+                      <SidebarMenuItem key={session.id}>
+                        <div className="flex items-center gap-2 pr-2">
+                          <SidebarMenuButton
+                            onClick={() => router.push(sessionPath)}
+                            isActive={active}
+                            className={cn(
+                              "hover:bg-white/5 hover:text-primary-400 transition-colors justify-between flex-1 text-left min-w-0"
+                            )}
+                          >
+                            <div className="flex flex-col gap-1 min-w-0">
+                              <span className="text-xs font-medium text-gray-200 truncate">
+                                {title}
+                              </span>
+                              <span className="text-[11px] text-gray-500 flex items-center gap-1">
+                                <Clock className="h-3 w-3" />
+                                {formatRelativeTime(session.lastActiveAt)}
+                              </span>
+                            </div>
+                          </SidebarMenuButton>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSessionPendingDelete(session);
+                              setDeleteDialogOpen(true);
+                            }}
+                            disabled={deletingSessionId === session.id}
+                            className="p-1 rounded-md text-gray-500 hover:text-red-400 hover:bg-red-500/20 transition-colors disabled:opacity-50"
+                            aria-label="Delete chat"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      </SidebarMenuItem>
+                    );
+                  })}
+                </SidebarMenu>
+              </SidebarGroupContent>
+            )}
+          </SidebarGroup>
+        )}
+
       </SidebarContent>
+
+      <AlertDialog
+        open={deleteDialogOpen}
+        onOpenChange={(open) => {
+          setDeleteDialogOpen(open);
+          if (!open && !deletingSessionId) {
+            setSessionPendingDelete(null);
+          }
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete chat?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently remove the conversation and all of its
+              messages. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deletingSessionId !== null}>
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              disabled={
+                deletingSessionId !== null || !sessionPendingDelete
+              }
+              onClick={() => {
+                if (sessionPendingDelete) {
+                  void performDeleteSession(sessionPendingDelete.id);
+                }
+              }}
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/*  <SidebarFooter className="border-t border-white/5">
         <SidebarMenu>

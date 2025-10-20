@@ -1,3 +1,7 @@
+"use client";
+
+import { useMemo } from "react";
+import { useParams } from "next/navigation";
 import { Chat } from "@/components/Chat";
 import { WalletConnect } from "@/components/WalletConnect";
 import { AppSidebar } from "@/components/app-sidebar";
@@ -7,7 +11,21 @@ import {
   SidebarTrigger
 } from "@/components/ui/sidebar";
 
-export default function TradePage() {
+function useSessionId(): string | null {
+  const params = useParams<{ sessionId: string | string[] }>();
+  return useMemo(() => {
+    if (!params) return null;
+    const raw = params.sessionId;
+    if (Array.isArray(raw)) {
+      return raw[0] ?? null;
+    }
+    return raw ?? null;
+  }, [params]);
+}
+
+export default function TradeSessionPage() {
+  const sessionId = useSessionId();
+
   return (
     <SidebarProvider>
       <AppSidebar />
@@ -32,7 +50,7 @@ export default function TradePage() {
             </div>
 
             <div className="max-w-4xl mx-auto mb-12 px-4 sm:px-6">
-              <Chat key="new" />
+              <Chat key={sessionId ?? "new"} sessionId={sessionId} />
             </div>
           </main>
         </div>

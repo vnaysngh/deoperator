@@ -1,7 +1,7 @@
-import { randomUUID } from "crypto";
 import { prisma } from "@/lib/prisma";
 import type { Prisma } from "@prisma/client";
 import type { UIMessage } from "ai";
+import { randomUUID } from "crypto";
 
 type PersistedMessage = {
   id: string;
@@ -37,13 +37,15 @@ function normalizeWalletAddress(address: string | null): string | null {
 }
 
 export async function GET(req: Request) {
+  const url = new URL(req.url);
+  const sessionId = url.searchParams.get("sessionId");
   const walletAddressHeader = req.headers.get("x-wallet-address");
   const normalizedWalletAddress = normalizeWalletAddress(walletAddressHeader);
 
-  if (!normalizedWalletAddress) {
+  if (!sessionId) {
     return new Response(
       JSON.stringify({
-        error: "Missing wallet address. Include x-wallet-address header."
+        error: "Missing sessionId query parameter."
       }),
       {
         status: 400,
@@ -54,7 +56,7 @@ export async function GET(req: Request) {
 
   try {
     const session = await prisma.chatSession.findUnique({
-      where: { walletAddress: normalizedWalletAddress },
+      where: { id: sessionId },
       include: {
         messages: {
           orderBy: { createdAt: "asc" }
@@ -63,20 +65,45 @@ export async function GET(req: Request) {
     });
 
     if (!session) {
-      const newSession = await prisma.chatSession.create({
-        data: { walletAddress: normalizedWalletAddress }
-      });
-
       return new Response(
         JSON.stringify({
-          sessionId: newSession.id,
-          messages: []
+          error: "Chat session not found."
         }),
         {
-          status: 200,
+          status: 404,
           headers: { "Content-Type": "application/json" }
         }
       );
+    }
+
+    if (
+      normalizedWalletAddress &&
+      session.walletAddress &&
+      session.walletAddress !== normalizedWalletAddress
+    ) {
+      return new Response(
+        JSON.stringify({
+          error: "Session belongs to a different wallet address."
+        }),
+        {
+          status: 403,
+          headers: { "Content-Type": "application/json" }
+        }
+      );
+    }
+
+    if (normalizedWalletAddress && !session.walletAddress) {
+      try {
+        await prisma.chatSession.update({
+          where: { id: session.id },
+          data: { walletAddress: normalizedWalletAddress }
+        });
+      } catch (assignError) {
+        console.error(
+          "[API] Failed to assign wallet to chat session:",
+          assignError
+        );
+      }
     }
 
     const responseMessages: PersistedMessage[] = [];

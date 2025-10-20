@@ -1,10 +1,10 @@
 // import { openai } from "@ai-sdk/openai";
 import { google } from "@ai-sdk/google";
+import { randomUUID } from "crypto";
 import { streamText, tool, convertToModelMessages, UIMessage } from "ai";
 import { z } from "zod";
-import { randomUUID } from "crypto";
 import { prisma } from "@/lib/prisma";
-import type { Prisma } from "@prisma/client";
+import type { ChatSession, Prisma } from "@prisma/client";
 import {
   getTokenBySymbol,
   normalizeTokenSymbol,
@@ -66,62 +66,142 @@ const ensureMessageId = (message: UIMessage): string => {
   return randomUUID();
 };
 
+const normalizeWallet = (address: string | null): string | null => {
+  if (!address) return null;
+  const trimmed = address.trim();
+  if (!trimmed) return null;
+  return trimmed.toLowerCase();
+};
+
 export async function POST(req: Request) {
   const { messages }: { messages: UIMessage[] } = await req.json();
-  const walletAddressHeader = req.headers.get("x-wallet-address") || "";
-  const walletAddress = walletAddressHeader.trim();
-  const normalizedWalletAddress =
-    walletAddress.length > 0 ? walletAddress.toLowerCase() : null;
+  const walletAddressHeader = req.headers.get("x-wallet-address");
+  const walletAddress = normalizeWallet(walletAddressHeader);
+  const sessionIdHeader = req.headers.get("x-session-id");
+  const providedSessionId = sessionIdHeader?.trim() || null;
   let chatSessionId: string | null = null;
+  let sessionRecord: ChatSession | null = null;
 
-  console.log(
-    "[API] POST /api/chat - Wallet address from headers:",
-    walletAddress
-  );
+  console.log("[API] POST /api/chat - Wallet:", walletAddress);
+  console.log("[API] POST /api/chat - Session header:", providedSessionId);
   console.log(
     "[API] POST /api/chat - Received messages:",
     JSON.stringify(messages, null, 2)
   );
 
   try {
-    if (normalizedWalletAddress) {
-      try {
-        const session = await prisma.chatSession.upsert({
-          where: { walletAddress: normalizedWalletAddress },
-          create: { walletAddress: normalizedWalletAddress },
-          update: { lastActiveAt: new Date() }
+    try {
+      if (providedSessionId) {
+        sessionRecord = await prisma.chatSession.findUnique({
+          where: { id: providedSessionId }
         });
+      }
 
-        chatSessionId = session.id;
+      if (!sessionRecord) {
+        sessionRecord = await prisma.chatSession.create({
+          data: {
+            id: providedSessionId ?? undefined,
+            walletAddress,
+            title: "New chat"
+          }
+        });
+      } else if (walletAddress) {
+        if (
+          sessionRecord.walletAddress &&
+          sessionRecord.walletAddress !== walletAddress
+        ) {
+          console.warn(
+            "[API] Wallet mismatch for session",
+            sessionRecord.id,
+            sessionRecord.walletAddress,
+            walletAddress
+          );
+          return new Response(
+            JSON.stringify({
+              error: "Session belongs to a different wallet address."
+            }),
+            {
+              status: 403,
+              headers: { "Content-Type": "application/json" }
+            }
+          );
+        }
 
-        const persistableMessages = messages
-          .filter(
-            (message) =>
-              message.role === "user" || message.role === "assistant"
-          )
-          .map((message) => ({
-            sessionId: session.id,
-            messageId: ensureMessageId(message),
+        if (!sessionRecord.walletAddress) {
+          sessionRecord = await prisma.chatSession.update({
+            where: { id: sessionRecord.id },
+            data: { walletAddress }
+          });
+        }
+      }
+
+      chatSessionId = sessionRecord.id;
+
+      const persistableMessages = messages
+        .filter(
+          (message) => message.role === "user" || message.role === "assistant"
+        )
+        .map((message) => {
+          const messageId = ensureMessageId(message);
+          if (!message.id || message.id.trim() === "") {
+            message.id = messageId;
+          }
+          return {
+            sessionId: sessionRecord!.id,
+            messageId,
             role: message.role,
             parts: serializeJson(message.parts),
             metadata:
               message.metadata !== undefined
                 ? serializeJson(message.metadata)
                 : undefined
-          }));
+          };
+        });
 
-        if (persistableMessages.length > 0) {
-          await prisma.chatMessage.createMany({
-            data: persistableMessages,
-            skipDuplicates: true
-          });
-        }
-      } catch (dbError) {
-        console.error(
-          "[API] Failed to persist incoming chat messages:",
-          dbError
-        );
+      if (persistableMessages.length > 0) {
+        await prisma.chatMessage.createMany({
+          data: persistableMessages,
+          skipDuplicates: true
+        });
       }
+
+      const latestUserMessage = persistableMessages
+        .slice()
+        .reverse()
+        .find((message) => message.role === "user");
+
+      if (latestUserMessage) {
+        const rawTextParts = messages
+          .filter((msg) => msg.id === latestUserMessage.messageId)
+          .flatMap((msg) =>
+            msg.parts
+              .filter((part) => part.type === "text")
+              .map((part) => part.type === "text" ? part.text : "")
+          )
+          .join(" ")
+          .trim();
+
+        if (rawTextParts.length > 0) {
+          await prisma.chatSession.update({
+            where: { id: sessionRecord.id },
+            data: {
+              title: rawTextParts.slice(0, 80),
+              lastActiveAt: new Date()
+            }
+          });
+          sessionRecord = {
+            ...sessionRecord,
+            title: rawTextParts.slice(0, 80)
+          };
+        }
+      } else {
+        await prisma.chatSession.update({
+          where: { id: sessionRecord.id },
+          data: { lastActiveAt: new Date() }
+        });
+      }
+    } catch (dbError) {
+      console.error("[API] Failed to persist incoming chat messages:", dbError);
     }
 
     const result = streamText({
@@ -1720,7 +1800,7 @@ export async function POST(req: Request) {
       originalMessages: messages,
       generateMessageId: randomUUID,
       onFinish: async ({ responseMessage, isAborted }) => {
-        if (!normalizedWalletAddress || !chatSessionId || isAborted) {
+        if (!chatSessionId || isAborted) {
           return;
         }
 
@@ -1763,10 +1843,39 @@ export async function POST(req: Request) {
         }
 
         try {
+          const latestUserMessage = [...messages]
+            .reverse()
+            .find((message) => message.role === "user");
+
+          const titleCandidate = latestUserMessage
+            ? latestUserMessage.parts
+                .filter((part) => part.type === "text")
+                .map((part) => part.text)
+                .join(" ")
+                .trim()
+            : null;
+
           await prisma.chatSession.update({
             where: { id: chatSessionId },
-            data: { lastActiveAt: new Date() }
+            data: {
+              lastActiveAt: new Date(),
+              title:
+                sessionRecord?.title === "New chat" && titleCandidate
+                  ? titleCandidate.slice(0, 80)
+                  : undefined
+            }
           });
+
+          if (
+            sessionRecord &&
+            sessionRecord.title === "New chat" &&
+            titleCandidate
+          ) {
+            sessionRecord = {
+              ...sessionRecord,
+              title: titleCandidate.slice(0, 80)
+            };
+          }
         } catch (updateError) {
           console.error(
             "[API] Failed to update chat session activity:",
@@ -1775,6 +1884,9 @@ export async function POST(req: Request) {
         }
       }
     });
+    if (chatSessionId) {
+      response.headers.set("x-session-id", chatSessionId);
+    }
     console.log("[API] Response created, returning to client");
     return response;
   } catch (error) {

@@ -10,12 +10,16 @@ datasource db {
 
 model ChatSession {
   id            String        @id @default(cuid())
-  walletAddress String        @unique
+  walletAddress String?
+  title         String        @default("New chat")
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
   lastActiveAt  DateTime      @default(now())
 
   messages ChatMessage[]
+
+  @@index([walletAddress])
+  @@index([createdAt])
 }
 
 model ChatMessage {

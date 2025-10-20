@@ -28,6 +28,7 @@ import { NATIVE_CURRENCY_ADDRESS } from "@/lib/native-currencies";
 import { formatCompactNumber } from "@/lib/utils";
 import type { Address, PublicClient, WalletClient } from "viem";
 import { formatUnits, parseUnits } from "viem";
+import { useRouter, usePathname } from "next/navigation";
 
 // Global ref to track the latest quote timestamp and listeners
 let latestQuoteTimestamp = 0;
@@ -202,7 +203,11 @@ function describeSwitchError(
   };
 }
 
-export function Chat() {
+type ChatProps = {
+  sessionId?: string | null;
+};
+
+export function Chat({ sessionId }: ChatProps) {
   const [input, setInput] = useState("");
   const { address } = useAccount();
   const normalizedAddress = address?.toLowerCase();
@@ -216,8 +221,37 @@ export function Chat() {
   addressRef.current = normalizedAddress;
   const copyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const historyLoadedRef = useRef<string | null>(null);
+  const lastSessionRef = useRef<string | null>(null);
+  const lastDispatchCountRef = useRef<number>(0);
+  const router = useRouter();
+  const pathname = usePathname();
 
-  const chatId = normalizedAddress ? `wallet:${normalizedAddress}` : "guest";
+  const [sessionState, setSessionState] = useState<string | null>(
+    sessionId ?? null
+  );
+  const sessionStateRef = useRef<string | null>(sessionState);
+  const initialSessionIdRef = useRef<string | null>(sessionId ?? null);
+
+  useEffect(() => {
+    sessionStateRef.current = sessionState;
+  }, [sessionState]);
+
+  useEffect(() => {
+    const normalized = sessionId ?? null;
+    setSessionState((prev) => (prev === normalized ? prev : normalized));
+  }, [sessionId]);
+
+  const chatIdRef = useRef<string | null>(null);
+  if (chatIdRef.current === null) {
+    chatIdRef.current = sessionId
+      ? `session:${sessionId}`
+      : normalizedAddress
+      ? `draft:${normalizedAddress}:${Date.now()}`
+      : typeof crypto !== "undefined" && "randomUUID" in crypto
+      ? `draft:${crypto.randomUUID()}`
+      : `draft:${Math.random().toString(36).slice(2)}`;
+  }
+  const chatId = chatIdRef.current!;
 
   const { messages, setMessages, sendMessage, status } = useChat({
     id: chatId,
@@ -225,20 +259,71 @@ export function Chat() {
       api: "/api/chat",
       fetch: async (input: RequestInfo | URL, init?: RequestInit) => {
         const currentAddress = addressRef.current || "";
+        const currentSessionId = sessionStateRef.current || "";
         console.log(
-          "[CLIENT] Sending request with wallet address:",
-          currentAddress
+          "[CLIENT] Sending request with wallet address & session:",
+          currentAddress,
+          currentSessionId
         );
+        const headers: Record<string, string> = {
+          ...(init?.headers as Record<string, string>),
+          "x-wallet-address": currentAddress
+        };
+        if (currentSessionId) {
+          headers["x-session-id"] = currentSessionId;
+        }
         return fetch(input, {
           ...init,
-          headers: {
-            ...(init?.headers as Record<string, string>),
-            "x-wallet-address": currentAddress
+          headers
+        }).then((response) => {
+          const responseSessionId = response.headers.get("x-session-id");
+          if (responseSessionId && sessionStateRef.current !== responseSessionId) {
+            setSessionState(responseSessionId);
           }
+          return response;
         });
       }
     })
   });
+
+  useEffect(() => {
+    if (!normalizedAddress) {
+      chatIdRef.current = null;
+      setSessionState(null);
+      sessionStateRef.current = null;
+      initialSessionIdRef.current = null;
+      historyLoadedRef.current = null;
+      lastSessionRef.current = null;
+      lastDispatchCountRef.current = 0;
+      setMessages([]);
+
+      if (typeof pathname === "string" && pathname.startsWith("/trade/") && pathname !== "/trade") {
+        router.replace("/trade");
+      }
+      return;
+    }
+
+    if (!sessionState || pathname === "/trade") {
+      return;
+    }
+
+    const verify = async () => {
+      try {
+        const response = await fetch(`/api/chat/history?sessionId=${sessionState}`, {
+          headers: { "x-wallet-address": normalizedAddress }
+        });
+
+        if (response.status === 403 || response.status === 404) {
+          router.replace("/trade");
+        }
+      } catch (error) {
+        console.error("[CLIENT] Failed to verify session access:", error);
+      }
+    };
+
+    void verify();
+  }, [normalizedAddress, pathname, router, sessionState, setMessages]);
+
   type ChatMessage = (typeof messages)[number];
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -246,14 +331,22 @@ export function Chat() {
   const lastProcessedUserMessageId = useRef<string | null>(null);
 
   useEffect(() => {
-    if (!normalizedAddress) {
+    if (!sessionState) {
       historyLoadedRef.current = null;
       setMessages([]);
       setIsHistoryLoading(false);
+      lastSessionRef.current = null;
       return;
     }
 
-    if (historyLoadedRef.current === normalizedAddress) {
+    const historyKey = `${sessionState}:${normalizedAddress ?? "anon"}`;
+    if (historyLoadedRef.current === historyKey) {
+      return;
+    }
+
+    if (!initialSessionIdRef.current) {
+      historyLoadedRef.current = historyKey;
+      lastSessionRef.current = sessionState;
       return;
     }
 
@@ -262,11 +355,17 @@ export function Chat() {
     const loadHistory = async () => {
       setIsHistoryLoading(true);
       try {
-        const response = await fetch("/api/chat/history", {
-          headers: {
-            "x-wallet-address": normalizedAddress
+        const headers: Record<string, string> = {};
+        if (normalizedAddress) {
+          headers["x-wallet-address"] = normalizedAddress;
+        }
+
+        const response = await fetch(
+          `/api/chat/history?sessionId=${sessionState}`,
+          {
+            headers
           }
-        });
+        );
 
         if (!response.ok) {
           const errorText = await response.text();
@@ -279,14 +378,13 @@ export function Chat() {
 
         if (!isCancelled) {
           setMessages(data.messages);
-          historyLoadedRef.current = normalizedAddress;
+          historyLoadedRef.current = historyKey;
+          lastSessionRef.current = sessionState;
         }
       } catch (historyError) {
         if (!isCancelled) {
-          console.error(
-            "[CLIENT] Failed to load chat history:",
-            historyError
-          );
+          console.error("[CLIENT] Failed to load chat history:", historyError);
+          setMessages([]);
         }
       } finally {
         if (!isCancelled) {
@@ -300,7 +398,24 @@ export function Chat() {
     return () => {
       isCancelled = true;
     };
-  }, [normalizedAddress, setMessages]);
+  }, [normalizedAddress, sessionState, setMessages]);
+
+  useEffect(() => {
+    const sessionChanged =
+      lastSessionRef.current &&
+      sessionState &&
+      lastSessionRef.current !== sessionState;
+
+    if (sessionChanged) {
+      setMessages([]);
+      historyLoadedRef.current = null;
+      lastDispatchCountRef.current = 0;
+    }
+
+    if (sessionState) {
+      lastSessionRef.current = sessionState;
+    }
+  }, [sessionState, setMessages]);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -360,10 +475,27 @@ export function Chat() {
     }
   }, [messages]);
 
+  useEffect(() => {
+    if (!sessionState || messages.length === 0) {
+      return;
+    }
+
+    if (lastDispatchCountRef.current === messages.length) {
+      return;
+    }
+
+    lastDispatchCountRef.current = messages.length;
+    window.dispatchEvent(
+      new CustomEvent("chat-session-updated", {
+        detail: { sessionId: sessionState }
+      })
+    );
+  }, [messages, sessionState]);
+
   return (
-    <div className="bg-black rounded-2xl overflow-hidden shadow-2xl flex flex-col max-h-[80vh]">
+    <div className="bg-black rounded-2xl shadow-2xl flex flex-col max-h-[80vh] min-h-[70vh] w-full px-4 sm:px-6 overflow-x-hidden">
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto p-3 sm:p-6 space-y-4 min-h-[400px] sm:min-h-[500px]">
+      <div className="flex-1 overflow-y-auto py-3 sm:py-6 space-y-4 overflow-x-hidden">
         {isHistoryLoading && messages.length === 0 && (
           <div className="h-full flex items-center justify-center text-center">
             <div className="flex items-center gap-2 text-gray-400 text-sm">
@@ -527,8 +659,9 @@ export function Chat() {
                           );
                         }
 
-                        const stakingInfo = output
-                          ?.stakingOptions as MorphoStakingOption | undefined;
+                        const stakingInfo = output?.stakingOptions as
+                          | MorphoStakingOption
+                          | undefined;
                         if (stakingInfo?.needsClientStaking) {
                           return (
                             <MorphoStakingCard
@@ -541,8 +674,9 @@ export function Chat() {
                           );
                         }
 
-                        const bridgeQuote = output
-                          ?.bridgeQuote as SerializedBridgeQuote | undefined;
+                        const bridgeQuote = output?.bridgeQuote as
+                          | SerializedBridgeQuote
+                          | undefined;
                         if (bridgeQuote?.needsClientBridge) {
                           return (
                             <BridgeQuoteCard
@@ -776,7 +910,7 @@ export function Chat() {
             setInput("");
           }
         }}
-        className="p-3 sm:p-4 flex-shrink-0"
+        className="py-3 sm:py-4 flex-shrink-0 w-full"
       >
         <div className="flex items-center gap-2 border-b border-white/10 focus-within:border-emerald-500/50 transition-colors">
           <input
@@ -789,7 +923,7 @@ export function Chat() {
                 : "Connect your wallet to start trading, staking, or bridging"
             }
             disabled={!address || status === "streaming"}
-            className="flex-1 px-0 py-2 sm:py-3 bg-transparent focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed text-white placeholder:text-gray-500 text-sm sm:text-base caret-emerald-500"
+            className="flex-1 px-2 sm:px-3 py-2 sm:py-3 bg-transparent focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed text-white placeholder:text-gray-500 text-sm sm:text-base caret-emerald-500"
           />
           <button
             type="submit"
@@ -969,10 +1103,16 @@ function BridgeQuoteCard({
   const [depositTxHash, setDepositTxHash] = useState<string | null>(null);
   const [fillTxHash, setFillTxHash] = useState<string | null>(null);
 
-  const { data: balance, isLoading: balanceLoading, refetch } = useBalance({
+  const {
+    data: balance,
+    isLoading: balanceLoading,
+    refetch
+  } = useBalance({
     address,
     chainId: bridgeQuote.originChainId,
-    token: bridgeQuote.isNative ? undefined : (bridgeQuote.tokenAddress as Address)
+    token: bridgeQuote.isNative
+      ? undefined
+      : (bridgeQuote.tokenAddress as Address)
   });
 
   const inputAmount = useMemo(
@@ -1012,36 +1152,33 @@ function BridgeQuoteCard({
     }
   }, [status]);
 
-  const feeSummary = useMemo(
-    () => {
-      const formatPercent = (value: number) =>
-        Number.isFinite(value) ? `${value.toFixed(3)}%` : "—";
+  const feeSummary = useMemo(() => {
+    const formatPercent = (value: number) =>
+      Number.isFinite(value) ? `${value.toFixed(3)}%` : "—";
 
-      return [
-        {
-          label: "Total fee",
-          value: `${bridgeQuote.totalFee.amountFormatted} ${bridgeQuote.tokenSymbol}`,
-          percent: formatPercent(bridgeQuote.totalFee.percentage)
-        },
-        {
-          label: "Relayer gas",
-          value: `${bridgeQuote.relayerGasFee.amountFormatted} ${bridgeQuote.tokenSymbol}`,
-          percent: formatPercent(bridgeQuote.relayerGasFee.percentage)
-        },
-        {
-          label: "Relayer capital",
-          value: `${bridgeQuote.relayerCapitalFee.amountFormatted} ${bridgeQuote.tokenSymbol}`,
-          percent: formatPercent(bridgeQuote.relayerCapitalFee.percentage)
-        },
-        {
-          label: "LP fee",
-          value: `${bridgeQuote.lpFee.amountFormatted} ${bridgeQuote.tokenSymbol}`,
-          percent: formatPercent(bridgeQuote.lpFee.percentage)
-        }
-      ];
-    },
-    [bridgeQuote]
-  );
+    return [
+      {
+        label: "Total fee",
+        value: `${bridgeQuote.totalFee.amountFormatted} ${bridgeQuote.tokenSymbol}`,
+        percent: formatPercent(bridgeQuote.totalFee.percentage)
+      },
+      {
+        label: "Relayer gas",
+        value: `${bridgeQuote.relayerGasFee.amountFormatted} ${bridgeQuote.tokenSymbol}`,
+        percent: formatPercent(bridgeQuote.relayerGasFee.percentage)
+      },
+      {
+        label: "Relayer capital",
+        value: `${bridgeQuote.relayerCapitalFee.amountFormatted} ${bridgeQuote.tokenSymbol}`,
+        percent: formatPercent(bridgeQuote.relayerCapitalFee.percentage)
+      },
+      {
+        label: "LP fee",
+        value: `${bridgeQuote.lpFee.amountFormatted} ${bridgeQuote.tokenSymbol}`,
+        percent: formatPercent(bridgeQuote.lpFee.percentage)
+      }
+    ];
+  }, [bridgeQuote]);
 
   const handleBridge = useCallback(async () => {
     if (!address) {
@@ -1141,7 +1278,9 @@ function BridgeQuoteCard({
             }
             if (progress.status === "txPending") {
               setStatus("depositing");
-              setStatusMessage("Deposit submitted. Waiting for confirmation...");
+              setStatusMessage(
+                "Deposit submitted. Waiting for confirmation..."
+              );
               if (progress.txHash) {
                 setDepositTxHash(progress.txHash);
               }
@@ -1163,11 +1302,15 @@ function BridgeQuoteCard({
           if (progress.step === "fill") {
             if (progress.status === "txPending") {
               setStatus("waiting-fill");
-              setStatusMessage("Fill transaction pending on the destination chain...");
+              setStatusMessage(
+                "Fill transaction pending on the destination chain..."
+              );
             }
             if (progress.status === "txSuccess") {
               setStatus("success");
-              setStatusMessage("Bridge filled! Funds are available on the destination chain.");
+              setStatusMessage(
+                "Bridge filled! Funds are available on the destination chain."
+              );
               if (progress.txReceipt?.transactionHash) {
                 setFillTxHash(progress.txReceipt.transactionHash);
               }
@@ -1221,7 +1364,8 @@ function BridgeQuoteCard({
               {bridgeQuote.requestedAmount} {bridgeQuote.tokenSymbol}
             </div>
             <div className="text-xs text-gray-400">
-              {bridgeQuote.originChainLabel} → {bridgeQuote.destinationChainLabel}
+              {bridgeQuote.originChainLabel} →{" "}
+              {bridgeQuote.destinationChainLabel}
             </div>
           </div>
           <div className="flex gap-4 text-sm">
@@ -1264,23 +1408,29 @@ function BridgeQuoteCard({
           </div>
           {minDepositNotice && (
             <div className="text-xs text-gray-400">
-              Minimum deposit for this lane: {minDepositNotice} {bridgeQuote.tokenSymbol}
+              Minimum deposit for this lane: {minDepositNotice}{" "}
+              {bridgeQuote.tokenSymbol}
             </div>
           )}
           {hasEnoughBalance === false && (
             <div className="text-xs text-red-400">
-              Insufficient {bridgeQuote.tokenSymbol} balance. You need {bridgeQuote.inputAmountFormatted} {bridgeQuote.tokenSymbol} but only have {balance
+              Insufficient {bridgeQuote.tokenSymbol} balance. You need{" "}
+              {bridgeQuote.inputAmountFormatted} {bridgeQuote.tokenSymbol} but
+              only have{" "}
+              {balance
                 ? `${Number(
                     formatUnits(balance.value, balance.decimals)
                   ).toLocaleString(undefined, {
                     maximumFractionDigits: 6
                   })} ${bridgeQuote.tokenSymbol}`
-                : `0 ${bridgeQuote.tokenSymbol}`}.
+                : `0 ${bridgeQuote.tokenSymbol}`}
+              .
             </div>
           )}
           {bridgeQuote.isAmountTooLow && hasEnoughBalance !== false && (
             <div className="text-xs text-amber-400">
-              This amount is near the minimum. Larger deposits may settle faster.
+              This amount is near the minimum. Larger deposits may settle
+              faster.
             </div>
           )}
         </div>
@@ -1315,12 +1465,18 @@ function BridgeQuoteCard({
           )}
           {depositTxHash && (
             <div className="text-xs text-gray-400">
-              Deposit tx hash: <span className="font-mono">{depositTxHash.slice(0, 6)}…{depositTxHash.slice(-4)}</span>
+              Deposit tx hash:{" "}
+              <span className="font-mono">
+                {depositTxHash.slice(0, 6)}…{depositTxHash.slice(-4)}
+              </span>
             </div>
           )}
           {fillTxHash && (
             <div className="text-xs text-gray-400">
-              Fill tx hash: <span className="font-mono">{fillTxHash.slice(0, 6)}…{fillTxHash.slice(-4)}</span>
+              Fill tx hash:{" "}
+              <span className="font-mono">
+                {fillTxHash.slice(0, 6)}…{fillTxHash.slice(-4)}
+              </span>
             </div>
           )}
         </div>
@@ -1344,12 +1500,7 @@ function MorphoStakingCard({
 }) {
   const [amount, setAmount] = useState("");
   const [actionState, setActionState] = useState<
-    | "idle"
-    | "checking-allowance"
-    | "approval"
-    | "staking"
-    | "success"
-    | "error"
+    "idle" | "checking-allowance" | "approval" | "staking" | "success" | "error"
   >("idle");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [transactionHash, setTransactionHash] = useState<string | null>(null);
@@ -1371,7 +1522,11 @@ function MorphoStakingCard({
     }
   }, [stakingInfo.chainId]);
 
-  const { data: balance, isLoading: balanceLoading, refetch } = useBalance({
+  const {
+    data: balance,
+    isLoading: balanceLoading,
+    refetch
+  } = useBalance({
     address,
     chainId: stakingInfo.chainId,
     token: stakingInfo.assetAddress
@@ -1506,10 +1661,7 @@ function MorphoStakingCard({
       activeWalletClient = clients.walletClient;
     } catch (err) {
       console.error("[CLIENT] Morpho staking network preparation error:", err);
-      const { message } = describeSwitchError(
-        err,
-        stakingInfo.chainLabel
-      );
+      const { message } = describeSwitchError(err, stakingInfo.chainLabel);
       setActionState("error");
       setErrorMessage(message);
       return;
@@ -1598,9 +1750,7 @@ function MorphoStakingCard({
               </div>
             </div>
             <div>
-              <div className="text-gray-400 text-xs uppercase">
-                Liquidity
-              </div>
+              <div className="text-gray-400 text-xs uppercase">Liquidity</div>
               <div className="text-white font-semibold">
                 <span title={liquidityTitle}>{liquidityLabel}</span>
               </div>
@@ -1657,7 +1807,9 @@ function MorphoStakingCard({
 
           {chainMismatch && (
             <div className="text-xs text-amber-400">
-              We&apos;ll prompt your wallet to switch to {stakingInfo.chainLabel} when you stake. If nothing pops up, change networks manually.
+              We&apos;ll prompt your wallet to switch to{" "}
+              {stakingInfo.chainLabel} when you stake. If nothing pops up,
+              change networks manually.
             </div>
           )}
           {!hasSufficientBalance && isAmountValid && !balanceLoading && (
@@ -1853,7 +2005,8 @@ function QuoteDisplay({
 
       console.log("[CLIENT] CowSwap quote payload", {
         partnerFee: quoteResponse.quoteResults?.tradeParameters?.partnerFee,
-        networkFee: quoteResponse.quoteResults?.amountsAndCosts?.costs?.networkFee,
+        networkFee:
+          quoteResponse.quoteResults?.amountsAndCosts?.costs?.networkFee,
         amountsAndCosts: quoteResponse.quoteResults?.amountsAndCosts
       });
 
@@ -2446,10 +2599,7 @@ function CreateOrderButton({
       activeWalletClient = clients.walletClient;
     } catch (err) {
       console.error("[CLIENT] Failed to prepare clients for order:", err);
-      const { message } = describeSwitchError(
-        err,
-        expectedChainLabel
-      );
+      const { message } = describeSwitchError(err, expectedChainLabel);
       setErrorMessage(message);
       setOrderStatus("error");
       setIsCheckingApproval(false);
@@ -2564,7 +2714,6 @@ function CreateOrderButton({
             {tokenInfo.fromToken} before creating the order.
           </div>
         )}
-
 
       {/* Error Messages */}
       {!hasEnoughBalance && !balanceLoading && balance && (
