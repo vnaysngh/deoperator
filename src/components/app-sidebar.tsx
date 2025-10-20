@@ -49,6 +49,32 @@ type SessionSummary = {
   lastActiveAt: string;
 };
 
+const sessionsCache = new Map<string, SessionSummary[]>();
+
+const sessionsAreEqual = (
+  a: SessionSummary[],
+  b: SessionSummary[]
+): boolean => {
+  if (a === b) return true;
+  if (a.length !== b.length) return false;
+
+  for (let i = 0; i < a.length; i += 1) {
+    const left = a[i];
+    const right = b[i];
+    if (
+      left.id !== right.id ||
+      left.title !== right.title ||
+      left.createdAt !== right.createdAt ||
+      left.updatedAt !== right.updatedAt ||
+      left.lastActiveAt !== right.lastActiveAt
+    ) {
+      return false;
+    }
+  }
+
+  return true;
+};
+
 const menuItems = [
   { title: "Trade", icon: ArrowLeftRight, url: "/trade" },
   { title: "Positions", icon: Wallet, url: "/positions" },
@@ -85,7 +111,13 @@ export function AppSidebar() {
   const router = useRouter();
   const { address } = useAccount();
   const normalizedAddress = address?.toLowerCase() ?? null;
-  const [historySessions, setHistorySessions] = useState<SessionSummary[]>([]);
+  const [historySessions, setHistorySessions] = useState<SessionSummary[]>(() => {
+    if (!normalizedAddress) {
+      return [];
+    }
+    const cached = sessionsCache.get(normalizedAddress);
+    return cached ? cached : [];
+  });
   const [historyOpen, setHistoryOpen] = useState(true);
   const [deletingSessionId, setDeletingSessionId] = useState<string | null>(
     null
@@ -115,7 +147,16 @@ export function AppSidebar() {
       const data = (await response.json()) as {
         sessions: SessionSummary[];
       };
-      setHistorySessions(data.sessions ?? []);
+      const nextSessions = data.sessions ?? [];
+      setHistorySessions((prevSessions) => {
+        if (sessionsAreEqual(prevSessions, nextSessions)) {
+          return prevSessions;
+        }
+        if (normalizedAddress) {
+          sessionsCache.set(normalizedAddress, nextSessions);
+        }
+        return nextSessions;
+      });
     } catch (error) {
       console.error("[SIDEBAR] Failed to fetch chat sessions:", error);
     }
@@ -172,7 +213,7 @@ export function AppSidebar() {
 
   useEffect(() => {
     fetchHistorySessions();
-  }, [fetchHistorySessions, pathname]);
+  }, [fetchHistorySessions]);
 
   useEffect(() => {
     const handler = () => {
@@ -188,6 +229,12 @@ export function AppSidebar() {
   useEffect(() => {
     if (!normalizedAddress) {
       setHistorySessions([]);
+      return;
+    }
+
+    const cached = sessionsCache.get(normalizedAddress);
+    if (cached) {
+      setHistorySessions(cached);
     }
   }, [normalizedAddress]);
 

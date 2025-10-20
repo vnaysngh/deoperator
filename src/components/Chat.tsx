@@ -223,6 +223,7 @@ export function Chat({ sessionId }: ChatProps) {
   const historyLoadedRef = useRef<string | null>(null);
   const lastSessionRef = useRef<string | null>(null);
   const lastDispatchCountRef = useRef<number>(0);
+  const skipNextDispatchRef = useRef<boolean>(false);
   const router = useRouter();
   const pathname = usePathname();
 
@@ -295,9 +296,14 @@ export function Chat({ sessionId }: ChatProps) {
       historyLoadedRef.current = null;
       lastSessionRef.current = null;
       lastDispatchCountRef.current = 0;
+      skipNextDispatchRef.current = false;
       setMessages([]);
 
-      if (typeof pathname === "string" && pathname.startsWith("/trade/") && pathname !== "/trade") {
+      if (
+        typeof pathname === "string" &&
+        pathname.startsWith("/trade/") &&
+        pathname !== "/trade"
+      ) {
         router.replace("/trade");
       }
       return;
@@ -372,11 +378,10 @@ export function Chat({ sessionId }: ChatProps) {
           throw new Error(errorText || "Failed to fetch history");
         }
 
-        const data = (await response.json()) as {
-          messages: ChatMessage[];
-        };
+        const data = (await response.json()) as { messages: ChatMessage[] };
 
         if (!isCancelled) {
+          skipNextDispatchRef.current = true;
           setMessages(data.messages);
           historyLoadedRef.current = historyKey;
           lastSessionRef.current = sessionState;
@@ -410,6 +415,7 @@ export function Chat({ sessionId }: ChatProps) {
       setMessages([]);
       historyLoadedRef.current = null;
       lastDispatchCountRef.current = 0;
+      skipNextDispatchRef.current = false;
     }
 
     if (sessionState) {
@@ -477,6 +483,12 @@ export function Chat({ sessionId }: ChatProps) {
 
   useEffect(() => {
     if (!sessionState || messages.length === 0) {
+      return;
+    }
+
+    if (skipNextDispatchRef.current) {
+      skipNextDispatchRef.current = false;
+      lastDispatchCountRef.current = messages.length;
       return;
     }
 
