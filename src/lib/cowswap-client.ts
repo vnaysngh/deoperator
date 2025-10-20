@@ -11,7 +11,43 @@ import { TradingSdk } from "@cowprotocol/sdk-trading";
 import { OrderKind } from "@cowprotocol/sdk-order-book";
 import { SupportedChainId } from "@cowprotocol/sdk-config";
 import { ViemAdapter } from "@cowprotocol/sdk-viem-adapter";
-import type { PublicClient, WalletClient, Address } from "viem";
+import { isAddress, type Address, type PublicClient, type WalletClient } from "viem";
+
+const PARTNER_FEE_BPS = 20;
+
+type PartnerFeeConfig = {
+  bps: number;
+  recipient: Address;
+};
+
+let cachedPartnerFee: PartnerFeeConfig | null = null;
+
+function getPartnerFeeConfig(): PartnerFeeConfig {
+  if (cachedPartnerFee) {
+    return cachedPartnerFee;
+  }
+
+  const recipient = process.env.NEXT_PUBLIC_COWSWAP_PARTNER_FEE_RECIPIENT;
+
+  if (!recipient) {
+    throw new Error(
+      "Missing NEXT_PUBLIC_COWSWAP_PARTNER_FEE_RECIPIENT environment variable for CowSwap partner fee"
+    );
+  }
+
+  if (!isAddress(recipient)) {
+    throw new Error(
+      `Invalid NEXT_PUBLIC_COWSWAP_PARTNER_FEE_RECIPIENT value: ${recipient}`
+    );
+  }
+
+  cachedPartnerFee = {
+    bps: PARTNER_FEE_BPS,
+    recipient: recipient as Address
+  };
+
+  return cachedPartnerFee;
+}
 
 /**
  * Map chain IDs to CoW Protocol supported chains
@@ -83,6 +119,8 @@ export async function getSwapQuote(
     chainId: number;
   }
 ) {
+  const partnerFee = getPartnerFeeConfig();
+
   console.log("[CLIENT SDK] getSwapQuote()", {
     sellToken: params.sellToken,
     buyToken: params.buyToken,
@@ -90,7 +128,9 @@ export async function getSwapQuote(
     chainId: params.chainId,
     sellTokenDecimals: params.sellTokenDecimals,
     buyTokenDecimals: params.buyTokenDecimals,
-    userAddress: params.userAddress
+    userAddress: params.userAddress,
+    partnerFeeBps: partnerFee.bps,
+    partnerFeeRecipient: partnerFee.recipient
   });
   const sdk = createTradingSdk(publicClient, walletClient, params.chainId);
 
@@ -103,7 +143,8 @@ export async function getSwapQuote(
     buyTokenDecimals: params.buyTokenDecimals,
     amount: params.amount,
     userAddress: params.userAddress,
-    validFor: 600 // 10 minutes
+    validFor: 600, // 10 minutes
+    partnerFee
   };
 
   // Get quote from Trading SDK

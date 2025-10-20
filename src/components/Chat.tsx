@@ -898,10 +898,6 @@ function BridgeQuoteCard({
   const [depositTxHash, setDepositTxHash] = useState<string | null>(null);
   const [fillTxHash, setFillTxHash] = useState<string | null>(null);
 
-  const walletChainId = walletClient?.chain?.id;
-  const chainMismatch =
-    walletChainId !== undefined && walletChainId !== bridgeQuote.originChainId;
-
   const { data: balance, isLoading: balanceLoading, refetch } = useBalance({
     address,
     chainId: bridgeQuote.originChainId,
@@ -1216,11 +1212,6 @@ function BridgeQuoteCard({
               This amount is near the minimum. Larger deposits may settle faster.
             </div>
           )}
-            {chainMismatch && (
-              <div className="text-xs text-amber-400">
-                We&apos;ll prompt your wallet to switch to {bridgeQuote.originChainLabel} when you bridge. If nothing pops up, change networks manually.
-              </div>
-            )}
         </div>
 
         <div className="space-y-2">
@@ -1669,7 +1660,6 @@ function QuoteDisplay({
 
   const {
     amount,
-    chain,
     chainId,
     fromTokenAddress,
     fromTokenDecimals,
@@ -1789,6 +1779,12 @@ function QuoteDisplay({
         return;
       }
 
+      console.log("[CLIENT] CowSwap quote payload", {
+        partnerFee: quoteResponse.quoteResults?.tradeParameters?.partnerFee,
+        networkFee: quoteResponse.quoteResults?.amountsAndCosts?.costs?.networkFee,
+        amountsAndCosts: quoteResponse.quoteResults?.amountsAndCosts
+      });
+
       const { amountsAndCosts } = quoteResponse.quoteResults;
 
       if (
@@ -1853,13 +1849,10 @@ function QuoteDisplay({
           "Price slippage too high for this trade. Try adjusting the amount or try again later."
         );
       } else if (
-        activeWalletClient.chain &&
-        activeWalletClient.chain.id !== chainId
+        errorMessage.includes("NEXT_PUBLIC_COWSWAP_PARTNER_FEE_RECIPIENT")
       ) {
         setError(
-          `Quote fetched while your wallet is on a different network. You can review the numbers, but switch to ${
-            chain ?? "the requested chain"
-          } before creating the order.`
+          "Swap configuration missing partner fee recipient. Please contact support."
         );
       } else {
         setError(
@@ -1872,7 +1865,6 @@ function QuoteDisplay({
   }, [
     address,
     amount,
-    chain,
     chainId,
     fromTokenDecimals,
     fromTokenAddress,
@@ -2265,7 +2257,6 @@ function CreateOrderButton({
   >("idle");
   const [orderId, setOrderId] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [chainWarning, setChainWarning] = useState<string | null>(null);
   const [isApproved, setIsApproved] = useState(false);
   const [isCheckingApproval, setIsCheckingApproval] = useState(true);
 
@@ -2351,20 +2342,10 @@ function CreateOrderButton({
   ]);
 
   useEffect(() => {
-    if (chainMismatch) {
-      if (orderStatus === "idle") {
-        setChainWarning(
-          `You'll be prompted to switch to ${expectedChainLabel} when you submit. If nothing appears, change networks in your wallet.`
-        );
-      }
-    } else {
-      setChainWarning(null);
-      // Clear stale errors so the button becomes actionable after switching
-      if (orderStatus === "error" && !errorMessage) {
-        setOrderStatus("idle");
-      }
+    if (!chainMismatch && orderStatus === "error" && !errorMessage) {
+      setOrderStatus("idle");
     }
-  }, [chainMismatch, expectedChainLabel, errorMessage, orderStatus]);
+  }, [chainMismatch, errorMessage, orderStatus]);
 
   const handleClick = async () => {
     if (!address) {
@@ -2391,18 +2372,12 @@ function CreateOrderButton({
 
       activePublicClient = clients.publicClient;
       activeWalletClient = clients.walletClient;
-      setChainWarning(null);
     } catch (err) {
       console.error("[CLIENT] Failed to prepare clients for order:", err);
-      const { message, manualSwitch } = describeSwitchError(
+      const { message } = describeSwitchError(
         err,
         expectedChainLabel
       );
-      if (manualSwitch) {
-        setChainWarning(
-          `Switch your wallet to ${expectedChainLabel} and try again.`
-        );
-      }
       setErrorMessage(message);
       setOrderStatus("error");
       setIsCheckingApproval(false);
@@ -2518,11 +2493,6 @@ function CreateOrderButton({
           </div>
         )}
 
-      {chainWarning && (
-        <div className="text-xs text-amber-400 bg-amber-500/10 px-3 py-2 rounded-md">
-          {chainWarning}
-        </div>
-      )}
 
       {/* Error Messages */}
       {!hasEnoughBalance && !balanceLoading && balance && (

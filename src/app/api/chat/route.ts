@@ -1,4 +1,5 @@
-import { openai } from "@ai-sdk/openai";
+// import { openai } from "@ai-sdk/openai";
+import { google } from "@ai-sdk/google";
 import { streamText, tool, convertToModelMessages, UIMessage } from "ai";
 import { z } from "zod";
 import {
@@ -8,10 +9,7 @@ import {
 } from "@/lib/tokens";
 import { getTokenUSDPrice } from "@/lib/prices";
 import { getChainName, getViemChain } from "@/lib/chains";
-import {
-  getCoinDetailsBySymbol,
-  getChainIdForPlatform
-} from "@/lib/coingecko";
+import { getCoinDetailsBySymbol, getChainIdForPlatform } from "@/lib/coingecko";
 import { createPublicClient, http, type Address, formatUnits } from "viem";
 import {
   isNativeCurrency,
@@ -33,12 +31,16 @@ import { formatCompactNumber } from "@/lib/utils";
 
 export const maxDuration = 30;
 
-type ToolSuccessResult<T extends Record<string, unknown> = Record<string, unknown>> = T & {
+type ToolSuccessResult<
+  T extends Record<string, unknown> = Record<string, unknown>
+> = T & {
   success: true;
   message: string;
 };
 
-type ToolErrorResult<T extends Record<string, unknown> = Record<string, unknown>> = T & {
+type ToolErrorResult<
+  T extends Record<string, unknown> = Record<string, unknown>
+> = T & {
   success: false;
   userMessage: string;
 };
@@ -66,7 +68,7 @@ export async function POST(req: Request) {
 
   try {
     const result = streamText({
-      model: openai("gpt-4-turbo"),
+      model: google("gemini-2.5-flash"),
       messages: convertToModelMessages(messages),
       onStepFinish: ({ text, toolCalls, toolResults, finishReason, usage }) => {
         console.log("[AI] Step finished:", {
@@ -365,11 +367,17 @@ export async function POST(req: Request) {
 
               // Check if fromToken is native currency (ETH, MATIC, etc.)
               if (isNativeCurrency(normalizedFrom, chainId)) {
-                console.log("[TOOL:getSwapQuote] Detected native currency:", normalizedFrom);
+                console.log(
+                  "[TOOL:getSwapQuote] Detected native currency:",
+                  normalizedFrom
+                );
                 const nativeCurrency = getNativeCurrency(chainId)!;
 
                 // Still need to get toToken info
-                const toTokenInfo = await getTokenBySymbol(normalizedTo, chainId);
+                const toTokenInfo = await getTokenBySymbol(
+                  normalizedTo,
+                  chainId
+                );
                 if (!toTokenInfo) {
                   const errorResult = toolError({
                     success: false,
@@ -480,16 +488,23 @@ export async function POST(req: Request) {
           inputSchema: z.object({
             tokenSymbol: z
               .string()
-              .describe("Token to stake. Only USDC or WETH are currently supported."),
+              .describe(
+                "Token to stake. Only USDC or WETH are currently supported."
+              ),
             chainId: z
               .number()
-              .describe("Chain to stake on. Only 1 (Ethereum), 42161 (Arbitrum), or 8453 (Base) are supported.")
+              .describe(
+                "Chain to stake on. Only 1 (Ethereum), 42161 (Arbitrum), or 8453 (Base) are supported."
+              )
           }),
           execute: async ({ tokenSymbol, chainId }) => {
-            console.log("[TOOL:getMorphoStakingOptions] Fetching staking vault:", {
-              tokenSymbol,
-              chainId
-            });
+            console.log(
+              "[TOOL:getMorphoStakingOptions] Fetching staking vault:",
+              {
+                tokenSymbol,
+                chainId
+              }
+            );
 
             if (
               !SUPPORTED_MORPHO_CHAIN_IDS.includes(
@@ -584,9 +599,7 @@ export async function POST(req: Request) {
                 `Deposits sit around ${totalAssetsCompact.short} ${assetSymbol}.`
               );
             } else if (tvlCompact) {
-              messageParts.push(
-                `Deposits sit around ~$${tvlCompact.short}.`
-              );
+              messageParts.push(`Deposits sit around ~$${tvlCompact.short}.`);
             }
 
             messageParts.push(
@@ -620,18 +633,29 @@ export async function POST(req: Request) {
           inputSchema: z.object({
             originChainId: z
               .number()
-              .describe("The chain ID the user is bridging from. Only 1, 42161, and 8453 are supported."),
+              .describe(
+                "The chain ID the user is bridging from. Only 1, 42161, and 8453 are supported."
+              ),
             destinationChainId: z
               .number()
-              .describe("The chain ID the user is bridging to. Only 1, 42161, and 8453 are supported."),
+              .describe(
+                "The chain ID the user is bridging to. Only 1, 42161, and 8453 are supported."
+              ),
             tokenSymbol: z
               .string()
-              .describe("Token symbol to bridge. Only ETH, USDC, USDT, or DAI are supported."),
+              .describe(
+                "Token symbol to bridge. Only ETH, USDC, USDT, or DAI are supported."
+              ),
             amount: z
               .string()
               .describe("Amount of the token to bridge (as a decimal string).")
           }),
-          execute: async ({ originChainId, destinationChainId, tokenSymbol, amount }) => {
+          execute: async ({
+            originChainId,
+            destinationChainId,
+            tokenSymbol,
+            amount
+          }) => {
             const result = await getAcrossBridgeQuote({
               originChainId,
               destinationChainId,
@@ -679,7 +703,8 @@ export async function POST(req: Request) {
             if (!walletAddress) {
               return toolError({
                 success: false,
-                userMessage: "Please connect your wallet first to create orders.",
+                userMessage:
+                  "Please connect your wallet first to create orders.",
                 error: "Wallet address not provided"
               });
             }
@@ -691,15 +716,22 @@ export async function POST(req: Request) {
 
               // Check if fromToken is native currency
               if (isNativeCurrency(normalizedFrom, chainId)) {
-                console.log("[TOOL:createOrder] Detected native currency:", normalizedFrom);
+                console.log(
+                  "[TOOL:createOrder] Detected native currency:",
+                  normalizedFrom
+                );
                 const nativeCurrency = getNativeCurrency(chainId)!;
 
                 // Get toToken info
-                const toTokenInfo = await getTokenBySymbol(normalizedTo, chainId);
+                const toTokenInfo = await getTokenBySymbol(
+                  normalizedTo,
+                  chainId
+                );
                 if (!toTokenInfo) {
                   return toolError({
                     success: false,
-                    userMessage: "Token not found. Could you double-check the token symbols or share the contract addresses?",
+                    userMessage:
+                      "Token not found. Could you double-check the token symbols or share the contract addresses?",
                     error: "Token lookup failed"
                   });
                 }
@@ -740,7 +772,8 @@ export async function POST(req: Request) {
               if (!fromTokenInfo || !toTokenInfo) {
                 return toolError({
                   success: false,
-                  userMessage: "Token not found. Could you double-check the token symbols or share the contract addresses?",
+                  userMessage:
+                    "Token not found. Could you double-check the token symbols or share the contract addresses?",
                   error: "Token lookup failed"
                 });
               }
@@ -1001,7 +1034,9 @@ export async function POST(req: Request) {
                 userMessage:
                   "I ran into an issue fetching CoinGecko data. Could you try again in a moment?",
                 error:
-                  error instanceof Error ? error.message : "Unknown error occurred"
+                  error instanceof Error
+                    ? error.message
+                    : "Unknown error occurred"
               });
             }
           }
@@ -1066,17 +1101,20 @@ export async function POST(req: Request) {
 
               // Check if this is a native currency (ETH, MATIC/POL/POLYGON)
               if (isNativeCurrency(normalized, chainId)) {
-                console.log("[TOOL:getTokenUSDPrice] Detected native currency:", normalized);
+                console.log(
+                  "[TOOL:getTokenUSDPrice] Detected native currency:",
+                  normalized
+                );
                 const nativeCurrency = getNativeCurrency(chainId)!;
 
                 // Map native currency symbols to CoinGecko coin IDs
                 // We directly use the coin ID to fetch details (no search API needed)
                 const coinGeckoIdMap: Record<string, string> = {
-                  'ETH': 'ethereum',
+                  ETH: "ethereum",
                   // 'BNB': 'binancecoin',
-                  'MATIC': 'polygon-ecosystem-token',
-                  'POL': 'polygon-ecosystem-token',
-                  'POLYGON': 'polygon-ecosystem-token'
+                  MATIC: "polygon-ecosystem-token",
+                  POL: "polygon-ecosystem-token",
+                  POLYGON: "polygon-ecosystem-token"
                 };
 
                 const coinGeckoId = coinGeckoIdMap[nativeCurrency.symbol];
@@ -1103,7 +1141,7 @@ export async function POST(req: Request) {
 
                   const usdPrice = coinDetails.market_data?.current_price?.usd;
 
-                  if (typeof usdPrice !== 'number') {
+                  if (typeof usdPrice !== "number") {
                     return toolError({
                       success: false,
                       userMessage: `I couldn't find current USD price for ${nativeCurrency.symbol}. Want to try again?`,
@@ -1112,11 +1150,13 @@ export async function POST(req: Request) {
                   }
 
                   // Format price with appropriate decimals
-                  const formattedPrice = usdPrice >= 1
-                    ? usdPrice.toFixed(2)
-                    : usdPrice.toFixed(6);
+                  const formattedPrice =
+                    usdPrice >= 1 ? usdPrice.toFixed(2) : usdPrice.toFixed(6);
 
-                  console.log(`[TOOL:getTokenUSDPrice] ${nativeCurrency.symbol} price from CoinGecko:`, formattedPrice);
+                  console.log(
+                    `[TOOL:getTokenUSDPrice] ${nativeCurrency.symbol} price from CoinGecko:`,
+                    formattedPrice
+                  );
 
                   return toolSuccess({
                     success: true,
@@ -1129,11 +1169,17 @@ export async function POST(req: Request) {
                     message: `${nativeCurrency.symbol} is currently $${formattedPrice} USD on ${chainName}`
                   });
                 } catch (geckoError) {
-                  console.error("[TOOL:getTokenUSDPrice] CoinGecko error:", geckoError);
+                  console.error(
+                    "[TOOL:getTokenUSDPrice] CoinGecko error:",
+                    geckoError
+                  );
                   return toolError({
                     success: false,
                     userMessage: `Having trouble fetching ${nativeCurrency.symbol} price from CoinGecko. Want to try again?`,
-                    error: geckoError instanceof Error ? geckoError.message : "CoinGecko API failed"
+                    error:
+                      geckoError instanceof Error
+                        ? geckoError.message
+                        : "CoinGecko API failed"
                   });
                 }
               }
@@ -1523,10 +1569,16 @@ export async function POST(req: Request) {
 
               // Check if fromToken is native currency
               if (isNativeCurrency(normalizedFrom, chainId)) {
-                console.log("[TOOL:getSwapQuoteForEntireBalance] Detected native currency:", normalizedFrom);
+                console.log(
+                  "[TOOL:getSwapQuoteForEntireBalance] Detected native currency:",
+                  normalizedFrom
+                );
                 const nativeCurrency = getNativeCurrency(chainId)!;
 
-                const toTokenInfo = await getTokenBySymbol(normalizedTo, chainId);
+                const toTokenInfo = await getTokenBySymbol(
+                  normalizedTo,
+                  chainId
+                );
                 if (!toTokenInfo) {
                   return toolError({
                     success: false,

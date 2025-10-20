@@ -1,4 +1,5 @@
-import { openai } from "@ai-sdk/openai";
+import { google } from "@ai-sdk/google";
+// import { openai } from "@ai-sdk/openai";
 import { streamText, convertToModelMessages, UIMessage } from "ai";
 
 export const maxDuration = 30;
@@ -10,57 +11,106 @@ export async function POST(req: Request) {
 
   console.log("[POSITIONS CHAT] Request:", {
     walletAddress,
-    messageCount: messages.length,
+    messageCount: messages.length
   });
 
   try {
     const positions = JSON.parse(positionsData);
 
     // Build a comprehensive context about the user's positions
-    const positionsContext = positions.length > 0
-      ? `
+    const positionsContext =
+      positions.length > 0
+        ? `
 USER'S DEFI POSITIONS DATA:
 
 Total Positions: ${positions.length}
-Total Protocols: ${new Set(positions.map((p: { protocol_id: string }) => p.protocol_id)).size}
-Total Value: $${positions.reduce((sum: number, p: { position: { balance_usd: number | null } }) => sum + (p.position.balance_usd || 0), 0).toFixed(2)}
+Total Protocols: ${
+            new Set(
+              positions.map((p: { protocol_id: string }) => p.protocol_id)
+            ).size
+          }
+Total Value: $${positions
+            .reduce(
+              (sum: number, p: { position: { balance_usd: number | null } }) =>
+                sum + (p.position.balance_usd || 0),
+              0
+            )
+            .toFixed(2)}
 
 DETAILED BREAKDOWN:
-${positions.map((pos: {
-  protocol_name: string;
-  protocol_id: string;
-  position: {
-    label: string;
-    tokens: Array<{
-      token_type: string;
-      symbol: string;
-      name: string;
-      balance_formatted: string;
-      usd_value?: number;
-    }>;
-    balance_usd: number | null;
-    position_details?: Record<string, unknown>;
-  };
-}, idx: number) => `
+${positions
+  .map(
+    (
+      pos: {
+        protocol_name: string;
+        protocol_id: string;
+        position: {
+          label: string;
+          tokens: Array<{
+            token_type: string;
+            symbol: string;
+            name: string;
+            balance_formatted: string;
+            usd_value?: number;
+          }>;
+          balance_usd: number | null;
+          position_details?: Record<string, unknown>;
+        };
+      },
+      idx: number
+    ) => `
 Position ${idx + 1}:
 - Protocol: ${pos.protocol_name} (${pos.protocol_id})
 - Type: ${pos.position.label}
-- Total Value: ${pos.position.balance_usd !== null ? `$${pos.position.balance_usd.toFixed(2)}` : 'N/A'}
+- Total Value: ${
+      pos.position.balance_usd !== null
+        ? `$${pos.position.balance_usd.toFixed(2)}`
+        : "N/A"
+    }
 - Assets:
-${pos.position.tokens.filter((t: { token_type: string }) => t.token_type !== 'defi-token').map((token: {
-  symbol: string;
-  balance_formatted: string;
-  usd_value?: number;
-  token_type: string;
-}) => `  * ${token.symbol}: ${parseFloat(token.balance_formatted).toFixed(6)} ${token.usd_value !== undefined ? `($${token.usd_value.toFixed(2)})` : ''} [${token.token_type === 'supplied' ? 'Deposited' : token.token_type === 'reward' ? 'Unclaimed Rewards' : token.token_type}]`).join('\n')}
-${pos.position.position_details && Object.keys(pos.position.position_details).length > 0 ? `- Details:
-${Object.entries(pos.position.position_details).filter(([key]) => !['reserve0', 'reserve1', 'factory', 'pair'].includes(key)).map(([key, value]) => `  * ${key.replace(/_/g, ' ')}: ${typeof value === 'number' ? value.toFixed(2) : String(value)}`).join('\n')}` : ''}
-`).join('\n')}
+${pos.position.tokens
+  .filter((t: { token_type: string }) => t.token_type !== "defi-token")
+  .map(
+    (token: {
+      symbol: string;
+      balance_formatted: string;
+      usd_value?: number;
+      token_type: string;
+    }) =>
+      `  * ${token.symbol}: ${parseFloat(token.balance_formatted).toFixed(6)} ${
+        token.usd_value !== undefined ? `($${token.usd_value.toFixed(2)})` : ""
+      } [${
+        token.token_type === "supplied"
+          ? "Deposited"
+          : token.token_type === "reward"
+          ? "Unclaimed Rewards"
+          : token.token_type
+      }]`
+  )
+  .join("\n")}
+${
+  pos.position.position_details &&
+  Object.keys(pos.position.position_details).length > 0
+    ? `- Details:
+${Object.entries(pos.position.position_details)
+  .filter(([key]) => !["reserve0", "reserve1", "factory", "pair"].includes(key))
+  .map(
+    ([key, value]) =>
+      `  * ${key.replace(/_/g, " ")}: ${
+        typeof value === "number" ? value.toFixed(2) : String(value)
+      }`
+  )
+  .join("\n")}`
+    : ""
+}
 `
-      : "No DeFi positions found for this wallet.";
+  )
+  .join("\n")}
+`
+        : "No DeFi positions found for this wallet.";
 
     const result = streamText({
-      model: openai("gpt-4-turbo"),
+      model: google("gemini-2.5-flash"),
       messages: convertToModelMessages(messages),
       system: `You are a helpful DeFi positions intelligence assistant. You help users understand their DeFi portfolio, including liquidity positions, staking, lending/borrowing, and other DeFi activities.
 
@@ -104,7 +154,7 @@ You: "You have a liquidity position in the ETH/USDC pool on Uniswap worth $1,200
 User: "What does APY mean?"
 You: "APY stands for Annual Percentage Yield - it's how much profit you'd make in a year. Looking at your Aave position earning 0.19% APY on WETH, that means if you keep your 0.052 WETH deposited for a year, you'd earn about $0.38 in interest (based on current rates). It's like a savings account, but for crypto!"
 
-Be helpful, clear, and always put the user's understanding first.`,
+Be helpful, clear, and always put the user's understanding first.`
     });
 
     return result.toUIMessageStreamResponse();
@@ -113,11 +163,11 @@ Be helpful, clear, and always put the user's understanding first.`,
     return new Response(
       JSON.stringify({
         error: "Failed to process request",
-        details: error instanceof Error ? error.message : "Unknown error",
+        details: error instanceof Error ? error.message : "Unknown error"
       }),
       {
         status: 500,
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json" }
       }
     );
   }

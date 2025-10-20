@@ -1,4 +1,5 @@
-import { openai } from "@ai-sdk/openai";
+import { google } from "@ai-sdk/google";
+// import { openai } from "@ai-sdk/openai";
 import { streamText, convertToModelMessages, UIMessage } from "ai";
 
 export const maxDuration = 30;
@@ -10,81 +11,114 @@ export async function POST(req: Request) {
 
   console.log("[TRANSACTIONS CHAT] Request:", {
     walletAddress,
-    messageCount: messages.length,
+    messageCount: messages.length
   });
 
   try {
     const transactions = JSON.parse(transactionsData);
 
     // Build comprehensive context about transactions
-    const transactionsContext = transactions.length > 0
-      ? `
+    const transactionsContext =
+      transactions.length > 0
+        ? `
 USER'S TRANSACTION HISTORY DATA:
 
 Total Transactions: ${transactions.length}
 Wallet Address: ${walletAddress}
 
 TRANSACTION BREAKDOWN:
-${transactions.map((tx: {
-  hash: string;
-  from_address: string;
-  from_address_label: string | null;
-  to_address: string;
-  to_address_label: string | null;
-  value: string;
-  gas: string;
-  gas_price: string;
-  receipt_gas_used: string;
-  receipt_status: string;
-  block_timestamp: string;
-  block_number: string;
-}, idx: number) => {
-  const ethValue = (parseFloat(tx.value) / 1e18).toFixed(6);
-  const gasUsed = parseInt(tx.receipt_gas_used);
-  const gasPrice = parseFloat(tx.gas_price) / 1e9; // Convert to Gwei
-  const gasFee = (gasUsed * gasPrice / 1e9).toFixed(6); // Convert to ETH
-  const date = new Date(tx.block_timestamp);
-  const isFromUser = tx.from_address.toLowerCase() === walletAddress.toLowerCase();
+${transactions
+  .map(
+    (
+      tx: {
+        hash: string;
+        from_address: string;
+        from_address_label: string | null;
+        to_address: string;
+        to_address_label: string | null;
+        value: string;
+        gas: string;
+        gas_price: string;
+        receipt_gas_used: string;
+        receipt_status: string;
+        block_timestamp: string;
+        block_number: string;
+      },
+      idx: number
+    ) => {
+      const ethValue = (parseFloat(tx.value) / 1e18).toFixed(6);
+      const gasUsed = parseInt(tx.receipt_gas_used);
+      const gasPrice = parseFloat(tx.gas_price) / 1e9; // Convert to Gwei
+      const gasFee = ((gasUsed * gasPrice) / 1e9).toFixed(6); // Convert to ETH
+      const date = new Date(tx.block_timestamp);
+      const isFromUser =
+        tx.from_address.toLowerCase() === walletAddress.toLowerCase();
 
-  return `
+      return `
 Transaction ${idx + 1}:
-- Type: ${isFromUser ? 'SENT' : 'RECEIVED'}
+- Type: ${isFromUser ? "SENT" : "RECEIVED"}
 - Hash: ${tx.hash}
 - Date: ${date.toLocaleDateString()} ${date.toLocaleTimeString()}
 - From: ${tx.from_address_label || tx.from_address}
-- To: ${tx.to_address ? (tx.to_address_label || tx.to_address) : 'Contract Creation'}
+- To: ${
+        tx.to_address
+          ? tx.to_address_label || tx.to_address
+          : "Contract Creation"
+      }
 - Amount: ${ethValue} ETH
 - Gas Used: ${gasUsed.toLocaleString()}
 - Gas Price: ${gasPrice.toFixed(2)} Gwei
 - Gas Fee: ${gasFee} ETH
-- Status: ${tx.receipt_status === '1' ? 'SUCCESS' : 'FAILED'}
+- Status: ${tx.receipt_status === "1" ? "SUCCESS" : "FAILED"}
 - Block: ${tx.block_number}
 `;
-}).join('\n')}
+    }
+  )
+  .join("\n")}
 
 SUMMARY STATISTICS:
-- Total Sent: ${transactions.filter((tx: { from_address: string }) =>
-  tx.from_address.toLowerCase() === walletAddress.toLowerCase()
-).length}
-- Total Received: ${transactions.filter((tx: { from_address: string }) =>
-  tx.from_address.toLowerCase() !== walletAddress.toLowerCase()
-).length}
-- Failed Transactions: ${transactions.filter((tx: { receipt_status: string }) =>
-  tx.receipt_status !== '1'
-).length}
-- Total ETH Transacted: ${(transactions.reduce((sum: number, tx: { value: string }) =>
-  sum + parseFloat(tx.value) / 1e18, 0
-)).toFixed(6)} ETH
-- Total Gas Spent: ${(transactions.reduce((sum: number, tx: { receipt_gas_used: string; gas_price: string }) => {
-  const gasUsed = parseInt(tx.receipt_gas_used);
-  const gasPrice = parseFloat(tx.gas_price) / 1e9;
-  return sum + (gasUsed * gasPrice / 1e9);
-}, 0)).toFixed(6)} ETH
+- Total Sent: ${
+            transactions.filter(
+              (tx: { from_address: string }) =>
+                tx.from_address.toLowerCase() === walletAddress.toLowerCase()
+            ).length
+          }
+- Total Received: ${
+            transactions.filter(
+              (tx: { from_address: string }) =>
+                tx.from_address.toLowerCase() !== walletAddress.toLowerCase()
+            ).length
+          }
+- Failed Transactions: ${
+            transactions.filter(
+              (tx: { receipt_status: string }) => tx.receipt_status !== "1"
+            ).length
+          }
+- Total ETH Transacted: ${transactions
+            .reduce(
+              (sum: number, tx: { value: string }) =>
+                sum + parseFloat(tx.value) / 1e18,
+              0
+            )
+            .toFixed(6)} ETH
+- Total Gas Spent: ${transactions
+            .reduce(
+              (
+                sum: number,
+                tx: { receipt_gas_used: string; gas_price: string }
+              ) => {
+                const gasUsed = parseInt(tx.receipt_gas_used);
+                const gasPrice = parseFloat(tx.gas_price) / 1e9;
+                return sum + (gasUsed * gasPrice) / 1e9;
+              },
+              0
+            )
+            .toFixed(6)} ETH
 `
-      : "No transactions found for this wallet.";
+        : "No transactions found for this wallet.";
 
     const result = streamText({
-      model: openai("gpt-4-turbo"),
+      model: google("gemini-2.5-flash"),
       messages: convertToModelMessages(messages),
       system: `You are a helpful blockchain transaction intelligence assistant. You help users understand their on-chain transaction history, gas fees, transaction types, and blockchain concepts.
 
@@ -145,9 +179,11 @@ User: "Why did this transaction fail?"
 You: "Transaction #5 failed on [date]. Even though it failed, you still paid the gas fee of 0.001 ETH. Common reasons for failures: insufficient balance, incorrect contract interaction, or gas limit too low. In your case, [analyze the specific transaction details to provide context]."
 
 User: "How much have I spent on gas?"
-You: "Based on your ${transactions.length} transactions, you've spent a total of [calculate from data] ETH on gas fees. That's an average of [calculate] ETH per transaction. This is pretty typical for Ethereum mainnet transactions."
+You: "Based on your ${
+        transactions.length
+      } transactions, you've spent a total of [calculate from data] ETH on gas fees. That's an average of [calculate] ETH per transaction. This is pretty typical for Ethereum mainnet transactions."
 
-Be helpful, educational, and always put the user's understanding and security first.`,
+Be helpful, educational, and always put the user's understanding and security first.`
     });
 
     return result.toUIMessageStreamResponse();
@@ -156,11 +192,11 @@ Be helpful, educational, and always put the user's understanding and security fi
     return new Response(
       JSON.stringify({
         error: "Failed to process request",
-        details: error instanceof Error ? error.message : "Unknown error",
+        details: error instanceof Error ? error.message : "Unknown error"
       }),
       {
         status: 500,
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json" }
       }
     );
   }

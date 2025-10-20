@@ -94,8 +94,9 @@ export function AppSidebar() {
                       asChild
                       isActive={active}
                       className={cn(
-                        "hover:bg-white/5 transition-colors",
-                        "hover:text-[#b0e0e6] data-[active=true]:!bg-transparent data-[active=true]:!text-[#b0e0e6]"
+                        "transition-colors",
+                        "hover:bg-[#7fffd41a] hover:text-[#7fffd4]",
+                        "data-[active=true]:!bg-[#7fffd41a] data-[active=true]:!text-[#7fffd4]"
                       )}
                     >
                       <Link

@@ -65,6 +65,9 @@ NEXT_PUBLIC_MAINNET_RPC_URL=https://mainnet.infura.io/v3/YOUR_PROJECT_ID
 NEXT_PUBLIC_BASE_RPC_URL=https://mainnet.base.org
 NEXT_PUBLIC_ARBITRUM_RPC_URL=https://arbitrum-one.public.blastapi.io
 
+# CoW Protocol partner fee recipient (used for 20 bps fee share)
+NEXT_PUBLIC_COWSWAP_PARTNER_FEE_RECIPIENT=0xPartnerFeeRecipientAddress
+
 # Moralis Web3 API key (https://admin.moralis.io/)
 MORALIS_API_KEY=your_moralis_api_key_here
 
