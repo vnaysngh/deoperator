@@ -7,7 +7,11 @@
     "build": "next build --turbopack",
     "start": "next start",
     "lint": "eslint",
-    "test:lookup": "node scripts/test-token-profile.js"
+    "test:lookup": "node scripts/test-token-profile.js",
+    "prebuild": "npm run prisma:generate",
+    "postinstall": "npm run prisma:generate",
+    "prisma:generate": "prisma generate",
+    "prisma:migrate-deploy": "prisma migrate deploy"
   },
   "dependencies": {
     "@across-protocol/app-sdk": "^0.4.2",
