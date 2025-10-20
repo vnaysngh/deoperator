@@ -205,16 +205,22 @@ function describeSwitchError(
 export function Chat() {
   const [input, setInput] = useState("");
   const { address } = useAccount();
+  const normalizedAddress = address?.toLowerCase();
   const publicClient = usePublicClient();
   const { data: walletClient } = useWalletClient();
   const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
+  const [isHistoryLoading, setIsHistoryLoading] = useState(false);
 
   // Use a ref to always get the latest address value
-  const addressRef = useRef<string | undefined>(address);
-  addressRef.current = address;
+  const addressRef = useRef<string | undefined>(normalizedAddress);
+  addressRef.current = normalizedAddress;
   const copyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const historyLoadedRef = useRef<string | null>(null);
 
-  const { messages, sendMessage, status } = useChat({
+  const chatId = normalizedAddress ? `wallet:${normalizedAddress}` : "guest";
+
+  const { messages, setMessages, sendMessage, status } = useChat({
+    id: chatId,
     transport: new DefaultChatTransport({
       api: "/api/chat",
       fetch: async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -238,6 +244,63 @@ export function Chat() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const lastProcessedUserMessageId = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!normalizedAddress) {
+      historyLoadedRef.current = null;
+      setMessages([]);
+      setIsHistoryLoading(false);
+      return;
+    }
+
+    if (historyLoadedRef.current === normalizedAddress) {
+      return;
+    }
+
+    let isCancelled = false;
+
+    const loadHistory = async () => {
+      setIsHistoryLoading(true);
+      try {
+        const response = await fetch("/api/chat/history", {
+          headers: {
+            "x-wallet-address": normalizedAddress
+          }
+        });
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          throw new Error(errorText || "Failed to fetch history");
+        }
+
+        const data = (await response.json()) as {
+          messages: ChatMessage[];
+        };
+
+        if (!isCancelled) {
+          setMessages(data.messages);
+          historyLoadedRef.current = normalizedAddress;
+        }
+      } catch (historyError) {
+        if (!isCancelled) {
+          console.error(
+            "[CLIENT] Failed to load chat history:",
+            historyError
+          );
+        }
+      } finally {
+        if (!isCancelled) {
+          setIsHistoryLoading(false);
+        }
+      }
+    };
+
+    loadHistory();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [normalizedAddress, setMessages]);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -301,7 +364,15 @@ export function Chat() {
     <div className="bg-black rounded-2xl overflow-hidden shadow-2xl flex flex-col max-h-[80vh]">
       {/* Messages */}
       <div className="flex-1 overflow-y-auto p-3 sm:p-6 space-y-4 min-h-[400px] sm:min-h-[500px]">
-        {messages.length === 0 && (
+        {isHistoryLoading && messages.length === 0 && (
+          <div className="h-full flex items-center justify-center text-center">
+            <div className="flex items-center gap-2 text-gray-400 text-sm">
+              <div className="w-4 h-4 border-2 border-primary-400 border-t-transparent rounded-full animate-spin"></div>
+              <span>Loading your conversation…</span>
+            </div>
+          </div>
+        )}
+        {!isHistoryLoading && messages.length === 0 && (
           <div className="h-full flex flex-col items-center justify-center text-center">
             <div className="w-12 h-12 sm:w-16 sm:h-16 rounded-2xl bg-primary-600/20 flex items-center justify-center mb-3 sm:mb-4">
               <svg
@@ -1681,7 +1752,8 @@ function QuoteDisplay({
     };
   }, []);
 
-  const isLatestQuote = quoteTimestamp === latestQuoteTimestamp;
+  const isLatestQuote =
+    latestQuoteTimestamp === 0 || quoteTimestamp === latestQuoteTimestamp;
 
   useEffect(() => {
     if (!isLatestQuote) {

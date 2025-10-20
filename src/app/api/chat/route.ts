@@ -2,6 +2,9 @@
 import { google } from "@ai-sdk/google";
 import { streamText, tool, convertToModelMessages, UIMessage } from "ai";
 import { z } from "zod";
+import { randomUUID } from "crypto";
+import { prisma } from "@/lib/prisma";
+import type { Prisma } from "@prisma/client";
 import {
   getTokenBySymbol,
   normalizeTokenSymbol,
@@ -53,9 +56,23 @@ function toolError<T extends ToolErrorResult>(result: T): T {
   return result;
 }
 
+const serializeJson = (value: unknown): Prisma.InputJsonValue =>
+  JSON.parse(JSON.stringify(value ?? null)) as Prisma.InputJsonValue;
+
+const ensureMessageId = (message: UIMessage): string => {
+  if (message.id && message.id.trim() !== "") {
+    return message.id;
+  }
+  return randomUUID();
+};
+
 export async function POST(req: Request) {
   const { messages }: { messages: UIMessage[] } = await req.json();
-  const walletAddress = req.headers.get("x-wallet-address") || "";
+  const walletAddressHeader = req.headers.get("x-wallet-address") || "";
+  const walletAddress = walletAddressHeader.trim();
+  const normalizedWalletAddress =
+    walletAddress.length > 0 ? walletAddress.toLowerCase() : null;
+  let chatSessionId: string | null = null;
 
   console.log(
     "[API] POST /api/chat - Wallet address from headers:",
@@ -67,6 +84,46 @@ export async function POST(req: Request) {
   );
 
   try {
+    if (normalizedWalletAddress) {
+      try {
+        const session = await prisma.chatSession.upsert({
+          where: { walletAddress: normalizedWalletAddress },
+          create: { walletAddress: normalizedWalletAddress },
+          update: { lastActiveAt: new Date() }
+        });
+
+        chatSessionId = session.id;
+
+        const persistableMessages = messages
+          .filter(
+            (message) =>
+              message.role === "user" || message.role === "assistant"
+          )
+          .map((message) => ({
+            sessionId: session.id,
+            messageId: ensureMessageId(message),
+            role: message.role,
+            parts: serializeJson(message.parts),
+            metadata:
+              message.metadata !== undefined
+                ? serializeJson(message.metadata)
+                : undefined
+          }));
+
+        if (persistableMessages.length > 0) {
+          await prisma.chatMessage.createMany({
+            data: persistableMessages,
+            skipDuplicates: true
+          });
+        }
+      } catch (dbError) {
+        console.error(
+          "[API] Failed to persist incoming chat messages:",
+          dbError
+        );
+      }
+    }
+
     const result = streamText({
       model: google("gemini-2.5-flash"),
       messages: convertToModelMessages(messages),
@@ -1659,7 +1716,65 @@ export async function POST(req: Request) {
     });
 
     console.log("[API] Streaming response to client...");
-    const response = result.toUIMessageStreamResponse();
+    const response = result.toUIMessageStreamResponse({
+      originalMessages: messages,
+      generateMessageId: randomUUID,
+      onFinish: async ({ responseMessage, isAborted }) => {
+        if (!normalizedWalletAddress || !chatSessionId || isAborted) {
+          return;
+        }
+
+        const responseMessageId =
+          responseMessage.id && responseMessage.id.trim() !== ""
+            ? responseMessage.id
+            : randomUUID();
+        responseMessage.id = responseMessageId;
+
+        try {
+          await prisma.chatMessage.create({
+            data: {
+              sessionId: chatSessionId,
+              messageId: responseMessageId,
+              role: responseMessage.role,
+              parts: serializeJson(responseMessage.parts),
+              metadata:
+                responseMessage.metadata !== undefined
+                  ? serializeJson(responseMessage.metadata)
+                  : undefined
+            }
+          });
+        } catch (createError) {
+          if (
+            createError &&
+            typeof createError === "object" &&
+            "code" in createError &&
+            (createError as { code?: string }).code === "P2002"
+          ) {
+            console.warn(
+              "[API] Assistant message already stored, skipping:",
+              responseMessage.id
+            );
+          } else {
+            console.error(
+              "[API] Failed to persist assistant message:",
+              createError
+            );
+          }
+        }
+
+        try {
+          await prisma.chatSession.update({
+            where: { id: chatSessionId },
+            data: { lastActiveAt: new Date() }
+          });
+        } catch (updateError) {
+          console.error(
+            "[API] Failed to update chat session activity:",
+            updateError
+          );
+        }
+      }
+    });
     console.log("[API] Response created, returning to client");
     return response;
   } catch (error) {
