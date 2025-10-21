@@ -10,6 +10,7 @@ import {
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createAppKit } from "@reown/appkit/react";
 import { ErrorBoundary } from "./ErrorBoundary";
+import { ThemeProvider } from "@/contexts/ThemeContext";
 import { networks, projectId, wagmiAdapter } from "@/lib/wagmi";
 import { arbitrum, base, /* bsc, */ mainnet /*, polygon */ } from "@reown/appkit/networks";
 
@@ -109,14 +110,16 @@ export function Providers({ children, cookies }: ProvidersProps) {
 
   return (
     <ErrorBoundary>
-      <WagmiProvider
-        config={wagmiAdapter.wagmiConfig as WagmiConfig}
-        initialState={initialState}
-      >
-        <QueryClientProvider client={queryClient}>
-          {children}
-        </QueryClientProvider>
-      </WagmiProvider>
+      <ThemeProvider>
+        <WagmiProvider
+          config={wagmiAdapter.wagmiConfig as WagmiConfig}
+          initialState={initialState}
+        >
+          <QueryClientProvider client={queryClient}>
+            {children}
+          </QueryClientProvider>
+        </WagmiProvider>
+      </ThemeProvider>
     </ErrorBoundary>
   );
 }
