@@ -80,7 +80,7 @@ const menuItems = [
   { title: "Trade", icon: ArrowLeftRight, url: "/trade" },
   { title: "Positions", icon: Wallet, url: "/positions" },
   { title: "Transactions", icon: BarChart3, url: "/transactions" },
-  { title: "polyIntelligence", icon: Activity, url: "/polymarket" }
+  { title: "polyIntelligence", icon: Activity, url: "/poly-intelligence" }
   // { title: "Liquidity", icon: TrendingUp, url: "/liquidity" },
 ];
 
