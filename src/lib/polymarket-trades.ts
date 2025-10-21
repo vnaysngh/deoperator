@@ -26,6 +26,7 @@ type FetchTradesOptions = {
   takerOnly?: boolean;
   sinceMs?: number;
   marketIds?: string[];
+  marketConditionIds?: string[];
   eventIds?: string[];
   user?: string;
   side?: "buy" | "sell";
@@ -201,7 +202,6 @@ const normalizeTrade = (raw: RawPolymarketTrade): PolymarketTrade => {
     notional,
     timestamp: toISOString(raw.timestamp ?? raw.created_at ?? raw.createdAt),
     txHash,
-    marketSlug: extractMarketSlug(raw),
     eventSlug: normalizeString(raw.eventSlug, raw.event_slug, raw.slug),
     trader: normalizeString(
       raw.proxyWallet,
@@ -221,6 +221,7 @@ export async function fetchPolymarketTrades({
   takerOnly = true,
   sinceMs,
   marketIds,
+  marketConditionIds,
   eventIds,
   user,
   side,
@@ -239,6 +240,10 @@ export async function fetchPolymarketTrades({
 
   if (marketIds && marketIds.length > 0) {
     url.searchParams.set("market", marketIds.join(","));
+  }
+
+  if (marketConditionIds && marketConditionIds.length > 0) {
+    url.searchParams.set("conditionId", marketConditionIds.join(","));
   }
 
   if (eventIds && eventIds.length > 0) {
