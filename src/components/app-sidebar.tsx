@@ -9,7 +9,8 @@ import {
   SidebarHeader,
   SidebarMenu,
   SidebarMenuButton,
-  SidebarMenuItem
+  SidebarMenuItem,
+  SidebarFooter
 } from "@/components/ui/sidebar";
 import {
   ArrowLeftRight,
@@ -40,6 +41,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle
 } from "@/components/ui/alert-dialog";
+import { ThemeToggle } from "@/components/ThemeToggle";
 
 type SessionSummary = {
   id: string;
@@ -394,6 +396,19 @@ export function AppSidebar() {
         )}
 
       </SidebarContent>
+
+      <SidebarFooter className="border-t border-white/5 dark:border-white/5 light:border-black/10">
+        <SidebarGroup>
+          <SidebarGroupLabel className="text-gray-500 text-xs">
+            Theme
+          </SidebarGroupLabel>
+          <SidebarGroupContent>
+            <div className="px-2 py-2">
+              <ThemeToggle />
+            </div>
+          </SidebarGroupContent>
+        </SidebarGroup>
+      </SidebarFooter>
 
       <AlertDialog
         open={deleteDialogOpen}
