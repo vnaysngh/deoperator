@@ -35,6 +35,16 @@ export type NormalizedPolymarketMarket = {
   eventTitle?: string | null;
   eventVolume?: number | null;
   eventTags?: string[];
+  relatedMarkets?: Array<{
+    question: string;
+    totalVolume: number | null;
+    volume24h: number | null;
+    liquidity: number | null;
+    yesPrice: number | null;
+    noPrice: number | null;
+    slug?: string | null;
+    url: string;
+  }>;
 };
 
 type FetchPolymarketResult = {
@@ -137,9 +147,7 @@ type RawGammaEvent = {
   markets?: RawGammaEventMarket[];
 };
 
-const normalizeNumber = (
-  ...values: Array<unknown>
-): number | null => {
+const normalizeNumber = (...values: Array<unknown>): number | null => {
   for (const value of values) {
     if (typeof value === "number" && Number.isFinite(value)) {
       return value;
@@ -154,9 +162,7 @@ const normalizeNumber = (
   return null;
 };
 
-const normalizeString = (
-  ...values: Array<unknown>
-): string | null => {
+const normalizeString = (...values: Array<unknown>): string | null => {
   for (const value of values) {
     if (typeof value === "string" && value.trim().length > 0) {
       return value.trim();
@@ -187,13 +193,19 @@ const toISOStringOrNull = (value: unknown): string | null => {
 };
 
 const generateRandomId = () => {
-  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
+  const maybeCrypto =
+    (typeof globalThis !== "undefined"
+      ? (globalThis as { crypto?: { randomUUID?: () => string } }).crypto
+      : undefined) ?? undefined;
+
+  if (maybeCrypto?.randomUUID) {
     try {
-      return crypto.randomUUID();
+      return maybeCrypto.randomUUID();
     } catch {
-      // fall back below
+      // Ignore and use math fallback.
     }
   }
+
   return `poly-${Math.random().toString(36).slice(2, 10)}`;
 };
 
@@ -289,14 +301,16 @@ const parseOutcomePrices = (
           item.toLowerCase().includes("yes")
         );
         if (yesIndex !== -1 && outcomePrices) {
-          const parsedPrices = JSON.parse(
-            outcomePrices
-          ) as Array<string | number>;
+          const parsedPrices = JSON.parse(outcomePrices) as Array<
+            string | number
+          >;
           const price = Number(parsedPrices[yesIndex]);
           if (Number.isFinite(price)) {
             return {
               yes: price,
-              no: Number.isFinite(1 - price) ? Number((1 - price).toFixed(4)) : null
+              no: Number.isFinite(1 - price)
+                ? Number((1 - price).toFixed(4))
+                : null
             };
           }
         }
@@ -319,7 +333,8 @@ const flattenGammaEvents = (
 
     const eventMarkets = Array.isArray(event.markets) ? event.markets : [];
 
-    const primaryCategory = selectPrimaryCategory(event.tags ?? []) ?? "General";
+    const primaryCategory =
+      selectPrimaryCategory(event.tags ?? []) ?? "General";
     const subcategory = selectSubcategory(event.tags ?? [], primaryCategory);
     const tagLabels = (event.tags ?? [])
       .map((tag) => tag.label)
@@ -338,7 +353,11 @@ const flattenGammaEvents = (
       })();
 
     const aggregatedLiquidity =
-      normalizeNumber(event.liquidity, event.liquidityClob, event.liquidityAmm) ??
+      normalizeNumber(
+        event.liquidity,
+        event.liquidityClob,
+        event.liquidityAmm
+      ) ??
       (() => {
         const sum = eventMarkets.reduce((total, market) => {
           const value = normalizeNumber(market.liquidity);
@@ -347,11 +366,19 @@ const flattenGammaEvents = (
         return sum > 0 ? sum : null;
       })();
 
+    const sortedEventMarkets = eventMarkets
+      .slice()
+      .sort(
+        (left, right) =>
+          (normalizeNumber(right.volume) ?? 0) -
+          (normalizeNumber(left.volume) ?? 0)
+      );
+
     let favouriteYes: number | null = null;
     let favouriteNo: number | null = null;
     let referenceMarket: RawGammaEventMarket | null = null;
 
-    for (const market of eventMarkets) {
+    for (const market of sortedEventMarkets) {
       const { yes, no } = parseOutcomePrices(
         market.outcomes,
         market.outcomePrices
@@ -359,7 +386,11 @@ const flattenGammaEvents = (
       if (yes !== null && (favouriteYes === null || yes > favouriteYes)) {
         favouriteYes = yes;
         favouriteNo =
-          no !== null ? no : Number.isFinite(1 - yes) ? Number((1 - yes).toFixed(4)) : null;
+          no !== null
+            ? no
+            : Number.isFinite(1 - yes)
+            ? Number((1 - yes).toFixed(4))
+            : null;
         referenceMarket = market;
       }
     }
@@ -396,11 +427,7 @@ const flattenGammaEvents = (
       subcategory,
       tags: Array.from(
         new Set(
-          [
-            ...tagLabels,
-            primaryCategory,
-            subcategory ?? null
-          ]
+          [...tagLabels, primaryCategory, subcategory ?? null]
             .filter((value): value is string => typeof value === "string")
             .map((value) => value.trim())
             .filter((value) => value.length > 0)
@@ -434,16 +461,38 @@ const flattenGammaEvents = (
       eventSlug: event.slug ?? null,
       eventTitle: event.title ?? null,
       eventVolume: aggregatedVolume,
-      eventTags: tagLabels
+      eventTags: tagLabels,
+      relatedMarkets: sortedEventMarkets.slice(0, 5).map((market) => {
+        const { yes, no } = parseOutcomePrices(
+          market.outcomes,
+          market.outcomePrices
+        );
+        const marketSlug = normalizeString(market.slug);
+        const marketIdentifier =
+          normalizeString(market.id, market.slug) ?? generateRandomId();
+        const marketUrl = marketSlug
+          ? buildMarketUrl(marketSlug, marketIdentifier)
+          : buildMarketUrl(null, marketIdentifier);
+
+        return {
+          question:
+            normalizeString(market.question, market.slug) ?? "Untitled outcome",
+          totalVolume: normalizeNumber(market.volume),
+          volume24h: normalizeNumber(market.volume24hr),
+          liquidity: normalizeNumber(market.liquidity),
+          yesPrice: yes,
+          noPrice: no,
+          slug: marketSlug,
+          url: marketUrl
+        };
+      })
     });
   }
 
   return aggregated;
 };
 
-const firstNonEmptyArray = (
-  ...values: Array<unknown>
-): string[] => {
+const firstNonEmptyArray = (...values: Array<unknown>): string[] => {
   for (const value of values) {
     if (Array.isArray(value)) {
       const filtered = value
@@ -494,12 +543,13 @@ const normalizeMarketPayload = (
       market.name
     ) ?? "Untitled Market";
 
-  const category = normalizeString(
-    market.category,
-    market.mainCategory,
-    market.section,
-    Array.isArray(market.categories) ? market.categories[0] : null
-  ) ?? "General";
+  const category =
+    normalizeString(
+      market.category,
+      market.mainCategory,
+      market.section,
+      Array.isArray(market.categories) ? market.categories[0] : null
+    ) ?? "General";
 
   const subcategory = normalizeString(
     market.subcategory,
@@ -532,13 +582,11 @@ const normalizeMarketPayload = (
       market.summary,
       market.context
     ),
-    status: normalizeString(
-      market.status,
-      market.state,
-      market.market_status
-    ),
+    status: normalizeString(market.status, market.state, market.market_status),
     isActive: Boolean(
-      market.active !== false && market.closed !== true && market.archived !== true
+      market.active !== false &&
+        market.closed !== true &&
+        market.archived !== true
     ),
     isResolved: market.closed === true || market.resolved === true,
     totalVolume: normalizeNumber(
@@ -551,26 +599,14 @@ const normalizeMarketPayload = (
       market.volume24h,
       market.volume_24h
     ),
-    volume7d: normalizeNumber(
-      market.volume7d,
-      market.volume_7d
-    ),
-    volume30d: normalizeNumber(
-      market.volume30d,
-      market.volume_30d
-    ),
+    volume7d: normalizeNumber(market.volume7d, market.volume_7d),
+    volume30d: normalizeNumber(market.volume30d, market.volume_30d),
     volumeChange24h: normalizeNumber(
       market.volumeChange24h,
       market.volume_change_24h
     ),
-    liquidity: normalizeNumber(
-      market.liquidity,
-      market.liquidity_in_usd
-    ),
-    openInterest: normalizeNumber(
-      market.open_interest,
-      market.openInterest
-    ),
+    liquidity: normalizeNumber(market.liquidity, market.liquidity_in_usd),
+    openInterest: normalizeNumber(market.open_interest, market.openInterest),
     lastPriceYes: yes,
     lastPriceNo: no,
     priceChange24h: normalizeNumber(
@@ -590,14 +626,8 @@ const normalizeMarketPayload = (
     lastUpdated: toISOStringOrNull(
       market.updated_at ?? market.updatedAt ?? market.lastUpdated
     ),
-    yesShares: normalizeNumber(
-      market.yesShares,
-      market.sharesYes
-    ),
-    noShares: normalizeNumber(
-      market.noShares,
-      market.sharesNo
-    ),
+    yesShares: normalizeNumber(market.yesShares, market.sharesYes),
+    noShares: normalizeNumber(market.noShares, market.sharesNo),
     isExpired: (() => {
       const timestamp = market.endDate
         ? new Date(String(market.endDate)).getTime()
@@ -649,6 +679,7 @@ export async function fetchPolymarketMarkets(): Promise<FetchPolymarketResult> {
     headers: {
       "User-Agent": "DeOperator/1.0 (polymarket dashboard)"
     },
+    cache: "no-store",
     next: {
       revalidate: 120
     }
@@ -662,8 +693,7 @@ export async function fetchPolymarketMarkets(): Promise<FetchPolymarketResult> {
         const flattened = flattenGammaEvents(eventsJson)
           .filter((market) => market.totalVolume !== null)
           .sort(
-            (left, right) =>
-              (right.totalVolume ?? 0) - (left.totalVolume ?? 0)
+            (left, right) => (right.totalVolume ?? 0) - (left.totalVolume ?? 0)
           );
 
         if (flattened.length > 0) {
@@ -744,3 +774,91 @@ export function get24hVolumeAccent(
 }
 
 export { EVENTS_ENDPOINT as DEFAULT_POLYMARKET_URL, FALLBACK_POLYMARKET_URL };
+
+type FetchRecentEventsOptions = {
+  sinceMs?: number;
+  limit?: number;
+  category?: string;
+  tag?: string;
+};
+
+export async function fetchRecentPolymarketEvents({
+  sinceMs,
+  limit = 50,
+  category,
+  tag
+}: FetchRecentEventsOptions = {}): Promise<NormalizedPolymarketMarket[]> {
+  const url = new URL(EVENTS_ENDPOINT);
+  url.searchParams.set("limit", String(Math.max(limit, 20)));
+  url.searchParams.set("order", "id");
+  url.searchParams.set("ascending", "false");
+  url.searchParams.set("closed", "false");
+
+  const response = await fetch(url.toString(), {
+    headers: {
+      "User-Agent": "DeOperator/1.0 (polymarket dashboard)"
+    },
+    cache: "no-store"
+  });
+
+  if (!response.ok) {
+    throw new Error(
+      `Failed to fetch recent Polymarket events: ${response.status}`
+    );
+  }
+
+  const events = (await response.json()) as RawGammaEvent[];
+
+  const sinceTimestamp = sinceMs ?? null;
+  const loweredCategory = category?.toLowerCase();
+  const loweredTag = tag?.toLowerCase();
+
+  const filteredEvents = events.filter((event) => {
+    const createdAt = event.createdAt;
+    if (sinceTimestamp) {
+      const createdMs = createdAt ? new Date(createdAt).getTime() : null;
+      if (createdMs === null || Number.isNaN(createdMs)) {
+        return false;
+      }
+      if (createdMs < sinceTimestamp) {
+        return false;
+      }
+    }
+
+    if (loweredCategory) {
+      const hasCategory = (event.tags ?? []).some((eventTag) => {
+        const label = eventTag.label?.toLowerCase();
+        const slug = eventTag.slug?.toLowerCase();
+        return label === loweredCategory || slug === loweredCategory;
+      });
+      if (!hasCategory) {
+        return false;
+      }
+    }
+
+    if (loweredTag) {
+      const matchesTag = (event.tags ?? []).some((eventTag) => {
+        const label = eventTag.label?.toLowerCase();
+        const slug = eventTag.slug?.toLowerCase();
+        return label === loweredTag || slug === loweredTag;
+      });
+      if (!matchesTag) {
+        return false;
+      }
+    }
+
+    return true;
+  });
+
+  const normalized = flattenGammaEvents(filteredEvents)
+    .filter((market) => market.createdAt !== null)
+    .sort((left, right) => {
+      const leftTime = left.createdAt ? new Date(left.createdAt).getTime() : 0;
+      const rightTime = right.createdAt
+        ? new Date(right.createdAt).getTime()
+        : 0;
+      return rightTime - leftTime;
+    });
+
+  return normalized.slice(0, limit);
+}

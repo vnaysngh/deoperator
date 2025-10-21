@@ -2,17 +2,38 @@ import {
   fetchPolymarketMarkets,
   getCacheHeaders
 } from "@/lib/polymarket";
+import {
+  fetchPolymarketTrades,
+  type PolymarketTrade
+} from "@/lib/polymarket-trades";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
   try {
-    const { markets, source } = await fetchPolymarketMarkets();
+    const [marketsResult, tradesResult] = await Promise.allSettled([
+      fetchPolymarketMarkets(),
+      fetchPolymarketTrades({
+        limit: 50,
+        takerOnly: true,
+        sinceMs: Date.now() - 24 * 60 * 60 * 1000
+      })
+    ]);
+
+    if (marketsResult.status !== "fulfilled") {
+      throw marketsResult.reason;
+    }
+
+    const { markets, source } = marketsResult.value;
+
+    const trades: PolymarketTrade[] =
+      tradesResult.status === "fulfilled" ? tradesResult.value : [];
 
     return new Response(
       JSON.stringify({
         markets,
-        source
+        source,
+        trades
       }),
       {
         status: 200,

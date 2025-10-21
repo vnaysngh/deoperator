@@ -15,6 +15,7 @@ import type {
   PolymarketTimeframe
 } from "@/lib/polymarket";
 import { getVolumeForTimeframe } from "@/lib/polymarket";
+import type { PolymarketTrade } from "@/lib/polymarket-trades";
 import {
   Sheet,
   SheetContent,
@@ -26,12 +27,21 @@ import {
 type FetchResponse = {
   markets: NormalizedPolymarketMarket[];
   source: "primary" | "fallback";
+  trades?: PolymarketTrade[];
 };
 
 const DEFAULT_TIMEFRAME: PolymarketTimeframe = "24h";
 const DEFAULT_TIMEFRAME_LABEL = "24h";
 const PAGE_SIZE = 10;
 type SortKey = "volume" | "liquidity";
+type ResultTab =
+  | {
+      id: string;
+      label: string;
+      type: "trades";
+      trades: PolymarketTrade[];
+      createdAt: string;
+    };
 const DEFAULT_CATEGORY = "Crypto";
 
 const formatCategoryLabel = (value: string): string => {
@@ -111,6 +121,54 @@ const formatRelativeTime = (isoDate: string | null): string => {
   return diff >= 0 ? `Closes in ${days} days` : `Closed ${days} days ago`;
 };
 
+const formatTimestamp = (iso: string) =>
+  new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZoneName: "short"
+  }).format(new Date(iso));
+
+const formatSize = (value: number | null) => {
+  if (value === null || Number.isNaN(value)) return "—";
+  if (Math.abs(value) >= 1) {
+    return value.toFixed(2);
+  }
+  return value.toFixed(4);
+};
+
+const formatPrice = (value: number | null) => {
+  if (value === null || Number.isNaN(value)) return "—";
+  return value.toFixed(4);
+};
+
+const tradeSideClasses: Record<string, string> = {
+  buy: "bg-emerald-500/15 text-emerald-300 border border-emerald-500/30",
+  sell: "bg-rose-500/15 text-rose-300 border border-rose-500/30",
+  unknown: "bg-white/10 text-gray-300 border border-white/10"
+};
+
+const formatTraderDisplay = (trade: PolymarketTrade): string => {
+  if (trade.traderName) return trade.traderName;
+  if (trade.traderPseudonym) return trade.traderPseudonym;
+  if (trade.trader) {
+    return `${trade.trader.slice(0, 6)}…${trade.trader.slice(-4)}`;
+  }
+  return "unknown";
+};
+
+const tradeUrl = (trade: PolymarketTrade): string | null => {
+  if (trade.marketSlug) {
+    return `https://polymarket.com/market/${trade.marketSlug}`;
+  }
+  if (trade.eventSlug) {
+    return `https://polymarket.com/event/${trade.eventSlug}`;
+  }
+  return null;
+};
+
 export default function PolymarketPage() {
   const [category, setCategory] = useState<string>(DEFAULT_CATEGORY);
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -119,6 +177,8 @@ export default function PolymarketPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const [sortKey, setSortKey] = useState<SortKey>("volume");
   const defaultCategoryAppliedRef = useRef(false);
+  const [resultTabs, setResultTabs] = useState<ResultTab[]>([]);
+  const [activeView, setActiveView] = useState<string>("markets");
 
   const { data, isLoading, isFetching, error, refetch } =
     useQuery<FetchResponse>({
@@ -132,12 +192,13 @@ export default function PolymarketPage() {
           throw new Error(message || "Unable to load Polymarket markets");
         }
         return (await response.json()) as FetchResponse;
-      },
-      refetchInterval: 120_000,
-      refetchOnWindowFocus: true
+      }
+      // refetchInterval: 120_000,
+      // refetchOnWindowFocus: true
     });
 
   const markets = useMemo(() => data?.markets ?? [], [data]);
+  const trades = useMemo(() => data?.trades ?? [], [data?.trades]);
 
   const { datasetMarkets, usingHistoricalSnapshot } = useMemo(() => {
     const now = Date.now();
@@ -248,6 +309,70 @@ export default function PolymarketPage() {
     return list;
   }, [filteredMarkets, sortKey]);
 
+  const topTrades = useMemo(
+    () =>
+      trades
+        .filter((trade) => trade.notional !== null && trade.marketQuestion)
+        .slice(0, 12),
+    [trades]
+  );
+
+  const ensureTradesTab = (forceActivate = false) => {
+    setResultTabs((prev) => {
+      const updatedTab: ResultTab = {
+        id: "largest-trades",
+        label: "Largest trades (24h)",
+        type: "trades",
+        trades: topTrades,
+        createdAt: new Date().toISOString()
+      };
+      const existing = prev.find((tab) => tab.type === "trades");
+      if (existing) {
+        return prev.map((tab) => (tab.type === "trades" ? updatedTab : tab));
+      }
+      return [...prev, updatedTab];
+    });
+
+    if (forceActivate) {
+      setActiveView("largest-trades");
+    }
+  };
+
+  useEffect(() => {
+    setResultTabs((prev) => {
+      const updatedTab: ResultTab = {
+        id: "largest-trades",
+        label: "Largest trades (24h)",
+        type: "trades",
+        trades: topTrades,
+        createdAt: new Date().toISOString()
+      };
+      const existing = prev.find((tab) => tab.type === "trades");
+      if (existing) {
+        return prev.map((tab) => (tab.type === "trades" ? updatedTab : tab));
+      }
+      return [...prev, updatedTab];
+    });
+  }, [topTrades]);
+
+  const tabOptions = useMemo(() => {
+    if (resultTabs.length === 0) {
+      return [] as Array<{ id: string; label: string }>;
+    }
+    return [
+      { id: "markets", label: "Markets" },
+      ...resultTabs.map((tab) => ({ id: tab.id, label: tab.label }))
+    ];
+  }, [resultTabs]);
+
+  const tradeTab = resultTabs.find((tab) => tab.id === "largest-trades");
+
+  useEffect(() => {
+    if (resultTabs.length === 0 && activeView !== "markets") {
+      setActiveView("markets");
+    }
+  }, [resultTabs.length, activeView]);
+
   const totalPages = Math.max(
     1,
     Math.ceil(sortedMarkets.length / PAGE_SIZE) || 1
@@ -291,7 +416,47 @@ export default function PolymarketPage() {
           </header>
 
           <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8 pb-20">
-            <section className="space-y-6">
+            <section className="pb-6">
+              <PolymarketChat
+                markets={sortedMarkets}
+                trades={topTrades}
+                activeCategory={category}
+                timeframe={DEFAULT_TIMEFRAME}
+                isLoading={isLoading}
+                onCreateTab={(descriptor) => {
+                  if (descriptor.type === "trades") {
+                    ensureTradesTab(true);
+                  }
+                }}
+              />
+            </section>
+
+            {tabOptions.length > 0 && (
+              <div className="flex justify-end">
+                <div className="glass border border-white/10 rounded-xl p-1 inline-flex bg-white/5">
+                  {tabOptions.map((option) => {
+                    const active = activeView === option.id;
+                    return (
+                      <button
+                        key={option.id}
+                        type="button"
+                        onClick={() => setActiveView(option.id)}
+                        className={`px-3 py-1.5 text-xs sm:text-sm font-medium rounded-lg transition-colors ${
+                          active
+                            ? "bg-emerald-500/20 text-emerald-300"
+                            : "text-gray-400 hover:text-emerald-200"
+                        }`}
+                      >
+                        {option.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {activeView === "markets" && (
+              <section className="space-y-6">
               <div className="glass-strong border border-white/10 rounded-xl p-4 sm:p-5">
                 <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
                   <div>
@@ -464,15 +629,127 @@ export default function PolymarketPage() {
                 </div>
               )}
             </section>
+            )}
 
-            <section className="pb-12">
-              <PolymarketChat
-                markets={sortedMarkets}
-                activeCategory={category}
-                timeframe={DEFAULT_TIMEFRAME}
-                isLoading={isLoading}
-              />
-            </section>
+            {activeView === "largest-trades" && (
+              <section className="space-y-6">
+                <div className="glass-strong border border-white/10 rounded-xl p-4 sm:p-5">
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                    <div>
+                      <h2 className="text-sm font-semibold text-white uppercase tracking-[0.32em]">
+                        Largest trades (last 24h)
+                      </h2>
+                      <p className="text-xs text-gray-400 mt-1">
+                        Pulled from the Polymarket CLOB trade feed. Sorted by quote notional.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="glass-strong border border-white/10 rounded-xl overflow-hidden">
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full text-sm">
+                      <thead className="bg-white/5">
+                        <tr className="text-left text-xs uppercase tracking-[0.22em] text-gray-400">
+                          <th className="px-4 py-3 font-medium">Market</th>
+                          <th className="px-4 py-3 font-medium">Side</th>
+                          <th className="px-4 py-3 font-medium">Notional</th>
+                          <th className="px-4 py-3 font-medium">Size</th>
+                          <th className="px-4 py-3 font-medium">Price</th>
+                          <th className="px-4 py-3 font-medium">Trader</th>
+                          <th className="px-4 py-3 font-medium">Time</th>
+                          <th className="px-4 py-3 font-medium">Tx</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {isLoading && (tradeTab?.trades.length ?? 0) === 0 ? (
+                          <tr>
+                            <td colSpan={8} className="px-4 py-12 text-center text-gray-400">
+                              Loading recent trades…
+                            </td>
+                          </tr>
+                        ) : (tradeTab?.trades.length ?? 0) === 0 ? (
+                          <tr>
+                            <td colSpan={8} className="px-4 py-12 text-center text-gray-400">
+                              No trades observed in the last 24 hours.
+                            </td>
+                          </tr>
+                        ) : (
+                          (tradeTab?.trades ?? []).map((trade) => {
+                            const url = tradeUrl(trade);
+                            const txHash = trade.txHash
+                              ? `${trade.txHash.slice(0, 6)}…${trade.txHash.slice(-4)}`
+                              : "—";
+                            return (
+                              <tr
+                                key={`${trade.id}-${trade.timestamp}`}
+                                className="border-t border-white/5 hover:bg-white/5 transition-colors"
+                              >
+                                <td className="px-4 py-4 align-top text-gray-200">
+                                  {url ? (
+                                    <a
+                                      href={url}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="hover:text-emerald-300 underline-offset-4 hover:underline"
+                                    >
+                                      {trade.marketQuestion}
+                                    </a>
+                                  ) : (
+                                    trade.marketQuestion
+                                  )}
+                                  <div className="text-xs text-gray-500 mt-1">
+                                    {trade.outcome ?? "—"}
+                                  </div>
+                                </td>
+                                <td className="px-4 py-4 align-top">
+                                  <span
+                                    className={`px-2 py-1 rounded-md text-xs font-medium ${
+                                      tradeSideClasses[trade.side] ?? tradeSideClasses.unknown
+                                    }`}
+                                  >
+                                    {trade.side.toUpperCase()}
+                                  </span>
+                                </td>
+                                <td className="px-4 py-4 align-top text-gray-200">
+                                  {formatCurrency(trade.notional)}
+                                </td>
+                                <td className="px-4 py-4 align-top text-gray-200">
+                                  {formatSize(trade.baseAmount)}
+                                </td>
+                                <td className="px-4 py-4 align-top text-gray-200">
+                                  {formatPrice(trade.price)}
+                                </td>
+                                <td className="px-4 py-4 align-top text-gray-200">
+                                  {formatTraderDisplay(trade)}
+                                </td>
+                                <td className="px-4 py-4 align-top text-gray-400">
+                                  {formatTimestamp(trade.timestamp)}
+                                </td>
+                                <td className="px-4 py-4 align-top text-gray-500 font-mono text-xs">
+                                  {trade.txHash ? (
+                                    <a
+                                      href={`https://polygonscan.com/tx/${trade.txHash}`}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="hover:text-emerald-300"
+                                    >
+                                      {txHash}
+                                    </a>
+                                  ) : (
+                                    txHash
+                                  )}
+                                </td>
+                              </tr>
+                            );
+                          })
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </section>
+            )}
           </main>
         </div>
       </SidebarInset>

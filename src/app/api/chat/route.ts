@@ -26,11 +26,13 @@ import {
   type SupportedMorphoAsset,
   type SupportedMorphoChainId
 } from "@/lib/morpho-client";
+import { fetchRecentPolymarketEvents } from "@/lib/polymarket";
 import {
   getAcrossBridgeQuote,
   type SerializedBridgeQuote
 } from "@/lib/across-client";
 import { formatCompactNumber } from "@/lib/utils";
+import { fetchPolymarketTrades } from "@/lib/polymarket-trades";
 
 export const maxDuration = 30;
 
@@ -1657,6 +1659,213 @@ export async function POST(req: Request) {
                 userMessage:
                   "Having trouble fetching balances. Want to try again?",
                 error: error instanceof Error ? error.message : "Unknown error"
+              });
+            }
+          }
+        }),
+        getPolymarketTrades: tool({
+          description:
+            "Fetch Polymarket trades with optional filters such as timeframe, market condition IDs, event IDs, minimum notional, and side.",
+          inputSchema: z.object({
+            timeframeMinutes: z
+              .number()
+              .int()
+              .min(1)
+              .max(1440)
+              .optional()
+              .describe(
+                "Look-back window in minutes. Defaults to 60 if omitted."
+              ),
+            limit: z
+              .number()
+              .int()
+              .min(1)
+              .max(500)
+              .optional()
+              .describe("Maximum number of trades to fetch (default 200)."),
+            marketConditionIds: z
+              .array(z.string())
+              .optional()
+              .describe(
+                "Condition IDs of markets to filter by (as 0x strings)."
+              ),
+            eventIds: z
+              .array(z.string())
+              .optional()
+              .describe("Event IDs to filter trades by."),
+            minNotionalUsd: z
+              .number()
+              .min(0)
+              .optional()
+              .describe("Minimum notional in USD to include a trade."),
+            side: z
+              .enum(["buy", "sell"])
+              .optional()
+              .describe("Filter trades by side."),
+            takerOnly: z
+              .boolean()
+              .optional()
+              .describe("Whether to restrict to taker trades (default true)."),
+            offset: z
+              .number()
+              .int()
+              .min(0)
+              .optional()
+              .describe("Pagination offset for the trades feed."),
+            user: z
+              .string()
+              .optional()
+              .describe("Filter trades for a specific trader (proxy wallet).")
+          }),
+          execute: async ({
+            timeframeMinutes,
+            limit,
+            marketConditionIds,
+            eventIds,
+            minNotionalUsd,
+            side,
+            takerOnly,
+            offset,
+            user
+          }) => {
+            const effectiveLimit = limit ?? 200;
+            const effectiveTimeframe = timeframeMinutes ?? 60;
+            const effectiveTakerOnly = takerOnly ?? true;
+            const sinceMs = Date.now() - effectiveTimeframe * 60 * 1000;
+
+            try {
+              const trades = await fetchPolymarketTrades({
+                limit: effectiveLimit,
+                takerOnly: effectiveTakerOnly,
+                sinceMs,
+                marketIds: marketConditionIds,
+                eventIds,
+                minNotionalUsd,
+                side,
+                offset,
+                user
+              });
+
+              const sorted = trades
+                .slice()
+                .sort(
+                  (left, right) =>
+                    (right.notional ?? 0) - (left.notional ?? 0)
+                );
+
+              const topTrade = sorted[0] ?? null;
+
+              const aggregateByTrader = trades.reduce<Record<string, number>>(
+                (acc, trade) => {
+                  const traderLabel =
+                    trade.traderName ??
+                    trade.traderPseudonym ??
+                    (trade.trader
+                      ? `${trade.trader.slice(0, 6)}…${trade.trader.slice(-4)}`
+                      : "unknown");
+                  const notional = trade.notional ?? 0;
+                  acc[traderLabel] = (acc[traderLabel] ?? 0) + notional;
+                  return acc;
+                },
+                {}
+              );
+
+              const topTraderEntry = Object.entries(aggregateByTrader)
+                .sort(([, valueA], [, valueB]) => valueB - valueA)
+                .at(0);
+
+              const summary = {
+                tradeCount: trades.length,
+                timeframeMinutes: effectiveTimeframe,
+                topTrade,
+                topTrader:
+                  topTraderEntry
+                    ? {
+                        trader: topTraderEntry[0],
+                        notional: topTraderEntry[1]
+                      }
+                    : null
+              };
+
+              return toolSuccess({
+                success: true,
+                message:
+                  trades.length > 0
+                    ? `Found ${trades.length} trades in the last ${effectiveTimeframe} minutes.`
+                    : `No trades found in the last ${effectiveTimeframe} minutes.`,
+                trades,
+                summary
+              });
+            } catch (error) {
+              console.error("[TOOL:getPolymarketTrades] Error:", error);
+              return toolError({
+                success: false,
+                userMessage:
+                  "I couldn't fetch the trades right now. Want to try again in a moment?",
+                error:
+                  error instanceof Error ? error.message : "Unknown error"
+              });
+            }
+          }
+        }),
+        getPolymarketEvents: tool({
+          description:
+            "Fetch recent Polymarket markets/events with optional category or tag filters.",
+          inputSchema: z.object({
+            timeframeMinutes: z
+              .number()
+              .int()
+              .min(1)
+              .max(1440)
+              .optional()
+              .describe(
+                "Look-back window in minutes for newly created markets. Defaults to 60."
+              ),
+            limit: z
+              .number()
+              .int()
+              .min(1)
+              .max(100)
+              .optional()
+              .describe("Maximum number of markets to fetch (default 20)."),
+            category: z
+              .string()
+              .optional()
+              .describe("Optional category label to filter on (e.g., 'crypto')."),
+            tag: z
+              .string()
+              .optional()
+              .describe("Optional tag to filter on (e.g., 'sports').")
+          }),
+          execute: async ({ timeframeMinutes, limit, category, tag }) => {
+            const effectiveLimit = limit ?? 20;
+            const effectiveTimeframe = timeframeMinutes ?? 60;
+            const sinceMs = Date.now() - effectiveTimeframe * 60 * 1000;
+
+            try {
+              const events = await fetchRecentPolymarketEvents({
+                sinceMs,
+                limit: effectiveLimit,
+                category,
+                tag
+              });
+
+              return toolSuccess({
+                success: true,
+                message:
+                  events.length > 0
+                    ? `Found ${events.length} markets created in the last ${effectiveTimeframe} minutes.`
+                    : `No new markets detected in the last ${effectiveTimeframe} minutes.`,
+                markets: events
+              });
+            } catch (error) {
+              console.error("[TOOL:getPolymarketEvents] Error:", error);
+              return toolError({
+                success: false,
+                userMessage:
+                  "I couldn't load the latest markets right now. Want to try again in a moment?",
+                error:
+                  error instanceof Error ? error.message : "Unknown error"
               });
             }
           }
