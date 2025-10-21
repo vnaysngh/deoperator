@@ -1370,7 +1370,7 @@ function BridgeQuoteCard({
   return (
     <div className="mt-3 pt-3 border-t border-white/10">
       <div className="glass-strong rounded-lg p-4 space-y-4">
-        <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="flex flex-col gap-4 sm:flex-row sm:flex-wrap sm:items-start sm:justify-between">
           <div>
             <div className="flex items-center gap-2 text-xs uppercase tracking-wide text-primary-300">
               <span className="inline-flex h-2 w-2 rounded-full bg-primary-400"></span>
@@ -1384,7 +1384,7 @@ function BridgeQuoteCard({
               {bridgeQuote.destinationChainLabel}
             </div>
           </div>
-          <div className="flex gap-4 text-sm">
+          <div className="flex flex-wrap gap-4 text-sm sm:justify-end">
             <div>
               <div className="text-gray-400 text-xs uppercase">You send</div>
               <div className="text-white font-semibold">
@@ -1741,7 +1741,7 @@ function MorphoStakingCard({
   return (
     <div className="mt-3 pt-3 border-t border-white/10">
       <div className="glass-strong rounded-lg p-4 space-y-4">
-        <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="flex flex-col gap-4 sm:flex-row sm:flex-wrap sm:items-start sm:justify-between">
           <div>
             <div className="flex items-center gap-2 text-xs uppercase tracking-wide text-primary-300">
               <span className="inline-flex h-2 w-2 rounded-full bg-primary-400"></span>
@@ -1758,7 +1758,7 @@ function MorphoStakingCard({
               </span>
             </div>
           </div>
-          <div className="flex gap-4 text-sm">
+          <div className="flex flex-wrap gap-4 text-sm sm:justify-end">
             <div>
               <div className="text-gray-400 text-xs uppercase">Net APY</div>
               <div className="text-white font-semibold">
@@ -1780,7 +1780,7 @@ function MorphoStakingCard({
             <span>{balanceLoading ? "Checking..." : balanceDisplay}</span>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
             <input
               type="text"
               inputMode="decimal"
@@ -1793,12 +1793,12 @@ function MorphoStakingCard({
                 }
               }}
               placeholder={`Amount of ${stakingInfo.tokenSymbol} to stake`}
-              className="flex-1 bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-primary-500/60"
+              className="w-full sm:flex-1 bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-primary-500/60"
             />
             <button
               type="button"
               onClick={handleMax}
-              className="px-3 py-2 text-xs border border-white/10 rounded-lg text-gray-300 hover:bg-white/10 transition-colors"
+              className="w-full sm:w-auto px-3 py-2 text-xs border border-white/10 rounded-lg text-gray-300 hover:bg-white/10 transition-colors"
               disabled={!balance || balance.value === BigInt(0)}
             >
               Max
@@ -1807,7 +1807,7 @@ function MorphoStakingCard({
               type="button"
               onClick={handleStake}
               disabled={stakeDisabled}
-              className="px-4 py-2 text-sm font-medium rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed bg-emerald-600 hover:bg-emerald-500 text-white"
+              className="w-full sm:w-auto px-4 py-2 text-sm font-medium rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed bg-emerald-600 hover:bg-emerald-500 text-white"
             >
               {actionState === "checking-allowance"
                 ? "Checking..."
@@ -2193,14 +2193,14 @@ function QuoteDisplay({
   return (
     <div className="mt-3 pt-3 border-t border-white/10">
       <div className="glass-strong rounded-lg p-4 space-y-2">
-        <div className="flex items-center justify-between mb-3">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-3">
           <div className="flex items-center gap-2">
             <div className="w-2 h-2 rounded-full bg-emerald-500"></div>
             <span className="text-xs font-semibold text-emerald-400">
               Live Swap Quote
             </span>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2 sm:justify-end">
             {tokenInfo.chain && (
               <span className="text-xs px-2 py-1 glass rounded-md text-gray-400">
                 {tokenInfo.chain}
@@ -2238,7 +2238,7 @@ function QuoteDisplay({
           </div>
         ) : (
           <>
-            <div className="grid grid-cols-2 gap-3 text-sm">
+            <div className="grid grid-cols-1 gap-3 text-sm sm:grid-cols-2">
               <div>
                 <div className="text-gray-500 text-xs">From</div>
                 <div className="text-white font-semibold">
