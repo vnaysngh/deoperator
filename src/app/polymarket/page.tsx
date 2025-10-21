@@ -432,8 +432,8 @@ export default function PolymarketPage() {
             </section>
 
             {tabOptions.length > 0 && (
-              <div className="flex justify-end">
-                <div className="glass border border-white/10 rounded-xl p-1 inline-flex bg-white/5">
+              <div className="flex justify-end overflow-x-auto">
+                <div className="glass border border-white/10 rounded-xl p-1 inline-flex bg-white/5 min-w-min">
                   {tabOptions.map((option) => {
                     const active = activeView === option.id;
                     return (
@@ -441,7 +441,7 @@ export default function PolymarketPage() {
                         key={option.id}
                         type="button"
                         onClick={() => setActiveView(option.id)}
-                        className={`px-3 py-1.5 text-xs sm:text-sm font-medium rounded-lg transition-colors ${
+                        className={`px-3 py-1.5 text-xs sm:text-sm font-medium rounded-lg transition-colors whitespace-nowrap ${
                           active
                             ? "bg-emerald-500/20 text-emerald-300"
                             : "text-gray-400 hover:text-emerald-200"
@@ -529,7 +529,8 @@ export default function PolymarketPage() {
               </div>
 
               <div className="glass-strong border border-white/10 rounded-xl overflow-hidden">
-                <div className="overflow-x-auto">
+                {/* Desktop Table View */}
+                <div className="hidden md:block overflow-x-auto">
                   <table className="min-w-full text-sm">
                     <thead className="bg-white/5">
                       <tr className="text-left text-xs uppercase tracking-[0.22em] text-gray-400">
@@ -597,6 +598,61 @@ export default function PolymarketPage() {
                     </tbody>
                   </table>
                 </div>
+
+                {/* Mobile Card View */}
+                <div className="md:hidden">
+                  {isLoading ? (
+                    <div className="px-4 py-12 text-center text-gray-400">
+                      Fetching live Polymarket order flow…
+                    </div>
+                  ) : sortedMarkets.length === 0 ? (
+                    <div className="px-4 py-12 text-center text-gray-400">
+                      No markets match the current filters.
+                    </div>
+                  ) : (
+                    <div className="divide-y divide-white/5">
+                      {paginatedMarkets.map((market) => (
+                        <div
+                          key={market.id}
+                          className="p-4 hover:bg-white/5 transition-colors cursor-pointer"
+                          onClick={() => {
+                            setSelectedMarket(market);
+                            setDrawerOpen(true);
+                          }}
+                        >
+                          <div className="space-y-3">
+                            <div>
+                              <div className="text-sm font-medium text-white leading-snug">
+                                {market.question}
+                              </div>
+                              <div className="text-xs text-gray-500 mt-1">
+                                {formatRelativeTime(market.endDate)}
+                              </div>
+                            </div>
+                            <div className="grid grid-cols-2 gap-3 text-xs">
+                              <div>
+                                <div className="text-gray-500 uppercase tracking-wider text-[10px]">Category</div>
+                                <div className="text-gray-300 mt-1">{formatCategoryLabel(market.category)}</div>
+                              </div>
+                              <div>
+                                <div className="text-gray-500 uppercase tracking-wider text-[10px]">Total Volume</div>
+                                <div className="text-gray-200 font-medium mt-1">{formatCurrency(market.totalVolume)}</div>
+                              </div>
+                              <div>
+                                <div className="text-gray-500 uppercase tracking-wider text-[10px]">Liquidity</div>
+                                <div className="text-gray-200 font-medium mt-1">{formatCurrency(market.liquidity)}</div>
+                              </div>
+                              <div>
+                                <div className="text-gray-500 uppercase tracking-wider text-[10px]">End Date</div>
+                                <div className="text-gray-300 mt-1">{formatDate(market.endDate)}</div>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
               {sortedMarkets.length > 0 && (
                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 text-xs text-gray-400 mt-4">
@@ -647,7 +703,8 @@ export default function PolymarketPage() {
                 </div>
 
                 <div className="glass-strong border border-white/10 rounded-xl overflow-hidden">
-                  <div className="overflow-x-auto">
+                  {/* Desktop Table View */}
+                  <div className="hidden lg:block overflow-x-auto">
                     <table className="min-w-full text-sm">
                       <thead className="bg-white/5">
                         <tr className="text-left text-xs uppercase tracking-[0.22em] text-gray-400">
@@ -747,6 +804,100 @@ export default function PolymarketPage() {
                       </tbody>
                     </table>
                   </div>
+
+                  {/* Mobile Card View */}
+                  <div className="lg:hidden">
+                    {isLoading && (tradeTab?.trades.length ?? 0) === 0 ? (
+                      <div className="px-4 py-12 text-center text-gray-400">
+                        Loading recent trades…
+                      </div>
+                    ) : (tradeTab?.trades.length ?? 0) === 0 ? (
+                      <div className="px-4 py-12 text-center text-gray-400">
+                        No trades observed in the last 24 hours.
+                      </div>
+                    ) : (
+                      <div className="divide-y divide-white/5">
+                        {(tradeTab?.trades ?? []).map((trade) => {
+                          const url = tradeUrl(trade);
+                          const txHash = trade.txHash
+                            ? `${trade.txHash.slice(0, 6)}…${trade.txHash.slice(-4)}`
+                            : "—";
+                          return (
+                            <div
+                              key={`${trade.id}-${trade.timestamp}`}
+                              className="p-4 hover:bg-white/5 transition-colors"
+                            >
+                              <div className="space-y-3">
+                                <div>
+                                  {url ? (
+                                    <a
+                                      href={url}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="text-sm font-medium text-white hover:text-emerald-300 underline-offset-4 hover:underline leading-snug block"
+                                    >
+                                      {trade.marketQuestion}
+                                    </a>
+                                  ) : (
+                                    <div className="text-sm font-medium text-white leading-snug">
+                                      {trade.marketQuestion}
+                                    </div>
+                                  )}
+                                  <div className="flex items-center gap-2 mt-2">
+                                    <span
+                                      className={`px-2 py-1 rounded-md text-xs font-medium ${
+                                        tradeSideClasses[trade.side] ?? tradeSideClasses.unknown
+                                      }`}
+                                    >
+                                      {trade.side.toUpperCase()}
+                                    </span>
+                                    {trade.outcome && (
+                                      <span className="text-xs text-gray-500">{trade.outcome}</span>
+                                    )}
+                                  </div>
+                                </div>
+                                <div className="grid grid-cols-2 gap-3 text-xs">
+                                  <div>
+                                    <div className="text-gray-500 uppercase tracking-wider text-[10px]">Notional</div>
+                                    <div className="text-gray-200 font-medium mt-1">{formatCurrency(trade.notional)}</div>
+                                  </div>
+                                  <div>
+                                    <div className="text-gray-500 uppercase tracking-wider text-[10px]">Price</div>
+                                    <div className="text-gray-200 font-medium mt-1">{formatPrice(trade.price)}</div>
+                                  </div>
+                                  <div>
+                                    <div className="text-gray-500 uppercase tracking-wider text-[10px]">Size</div>
+                                    <div className="text-gray-200 mt-1">{formatSize(trade.baseAmount)}</div>
+                                  </div>
+                                  <div>
+                                    <div className="text-gray-500 uppercase tracking-wider text-[10px]">Trader</div>
+                                    <div className="text-gray-200 mt-1">{formatTraderDisplay(trade)}</div>
+                                  </div>
+                                  <div className="col-span-2">
+                                    <div className="text-gray-500 uppercase tracking-wider text-[10px]">Time</div>
+                                    <div className="text-gray-400 mt-1">{formatTimestamp(trade.timestamp)}</div>
+                                  </div>
+                                  {trade.txHash && (
+                                    <div className="col-span-2">
+                                      <div className="text-gray-500 uppercase tracking-wider text-[10px]">Transaction</div>
+                                      <a
+                                        href={`https://polygonscan.com/tx/${trade.txHash}`}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="text-gray-500 hover:text-emerald-300 font-mono mt-1 block"
+                                      >
+                                        {txHash}
+                                      </a>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
                 </div>
               </section>
             )}
@@ -765,15 +916,15 @@ export default function PolymarketPage() {
       >
         <SheetContent
           side="right"
-          className="bg-black/95 border-l border-white/10"
+          className="bg-black/95 border-l border-white/10 w-full sm:max-w-md"
         >
           {selectedMarket && (
             <>
-              <SheetHeader className="border-b border-white/10">
-                <SheetTitle className="text-lg text-white">
+              <SheetHeader className="border-b border-white/10 pb-4">
+                <SheetTitle className="text-base sm:text-lg text-white pr-8 leading-snug">
                   {selectedMarket.question}
                 </SheetTitle>
-                <SheetDescription className="text-xs text-gray-400">
+                <SheetDescription className="text-xs text-gray-400 pt-1">
                   {formatCategoryLabel(selectedMarket.category)}
                   {selectedMarket.subcategory
                     ? ` → ${formatCategoryLabel(selectedMarket.subcategory)}`
@@ -781,12 +932,12 @@ export default function PolymarketPage() {
                 </SheetDescription>
               </SheetHeader>
 
-              <div className="p-4 space-y-4 overflow-y-auto">
-                <div className="glass border border-white/10 rounded-lg p-4">
+              <div className="mt-4 space-y-4 overflow-y-auto max-h-[calc(100vh-120px)]">
+                <div className="glass border border-white/10 rounded-lg p-3 sm:p-4">
                   <h3 className="text-xs uppercase tracking-[0.22em] text-gray-400">
                     Key Metrics
                   </h3>
-                  <div className="mt-3 space-y-3 text-sm text-gray-200">
+                  <div className="mt-3 space-y-3 text-xs sm:text-sm text-gray-200">
                     <div className="flex items-center justify-between">
                       <span>Total Volume</span>
                       <span className="font-medium">
@@ -819,33 +970,33 @@ export default function PolymarketPage() {
                   </div>
                 </div>
 
-                <div className="glass border border-white/10 rounded-lg p-4 space-y-3 text-sm text-gray-200">
+                <div className="glass border border-white/10 rounded-lg p-3 sm:p-4 space-y-3 text-xs sm:text-sm text-gray-200">
                   <div className="flex items-center justify-between">
                     <span>Closes</span>
-                    <span>{formatDate(selectedMarket.endDate)}</span>
+                    <span className="text-right">{formatDate(selectedMarket.endDate)}</span>
                   </div>
                   <div className="flex items-center justify-between">
                     <span>Created</span>
-                    <span>{formatDate(selectedMarket.createdAt)}</span>
+                    <span className="text-right">{formatDate(selectedMarket.createdAt)}</span>
                   </div>
                   <div className="flex items-center justify-between">
                     <span>Last updated</span>
-                    <span>{formatDate(selectedMarket.lastUpdated)}</span>
+                    <span className="text-right">{formatDate(selectedMarket.lastUpdated)}</span>
                   </div>
                 </div>
 
                 {selectedMarket.description && (
-                  <div className="glass border border-white/10 rounded-lg p-4">
+                  <div className="glass border border-white/10 rounded-lg p-3 sm:p-4">
                     <h3 className="text-xs uppercase tracking-[0.22em] text-gray-400 mb-2">
                       Market Context
                     </h3>
-                    <p className="text-sm text-gray-300 leading-relaxed">
+                    <p className="text-xs sm:text-sm text-gray-300 leading-relaxed">
                       {selectedMarket.description}
                     </p>
                   </div>
                 )}
 
-                <div className="glass border border-emerald-500/30 rounded-lg p-4">
+                <div className="glass border border-emerald-500/30 rounded-lg p-3 sm:p-4">
                   <a
                     href={selectedMarket.url}
                     target="_blank"

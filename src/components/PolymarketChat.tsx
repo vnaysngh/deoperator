@@ -344,27 +344,36 @@ export function PolymarketChat({
 
   return (
     <div className="glass-strong rounded-xl border border-white/10 overflow-hidden flex flex-col transition-all duration-300 ease-out w-full">
-      <div className="p-4 border-b border-white/10 bg-gradient-to-r from-emerald-600/10 to-cyan-600/10">
-        <div className="flex items-start gap-3">
-          <div className="flex items-center gap-3 flex-1">
-            <div className="w-8 h-8 rounded-lg bg-emerald-500/20 flex items-center justify-center border border-emerald-500/20">
+      <div className="p-3 sm:p-4 border-b border-white/10 bg-gradient-to-r from-emerald-600/10 to-cyan-600/10">
+        <div className="flex items-start gap-2 sm:gap-3">
+          <div className="flex items-center gap-2 sm:gap-3 flex-1 min-w-0">
+            <div className="w-8 h-8 flex-shrink-0 rounded-lg bg-emerald-500/20 flex items-center justify-center border border-emerald-500/20">
               <span className="text-lg">📈</span>
             </div>
-            <div>
-              <h3 className="font-semibold text-white">Polymarket Intelligence</h3>
-              <p className="text-xs text-gray-400">
+            <div className="min-w-0 flex-1">
+              <h3 className="font-semibold text-white text-sm sm:text-base">Polymarket Intelligence</h3>
+              <p className="text-[10px] sm:text-xs text-gray-400 hidden sm:block">
                 Ask the agent about prediction market flow and sentiment.
+              </p>
+              <p className="text-[10px] text-gray-400 sm:hidden">
+                Ask about markets & trades
               </p>
             </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1 sm:gap-2 flex-shrink-0">
             {isProcessing && (
-              <div className="flex items-center gap-2 text-[11px] text-emerald-200/80 px-3 py-1 rounded-lg border border-emerald-400/20 bg-emerald-400/10">
+              <div className="hidden sm:flex items-center gap-2 text-[11px] text-emerald-200/80 px-3 py-1 rounded-lg border border-emerald-400/20 bg-emerald-400/10">
                 <span className="relative flex h-2 w-2">
                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-300 opacity-75" />
                   <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-300" />
                 </span>
-                Syncing Polymarket data…
+                Syncing…
+              </div>
+            )}
+            {isProcessing && (
+              <div className="sm:hidden relative flex h-2 w-2">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-300 opacity-75" />
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-300" />
               </div>
             )}
             <button
@@ -430,7 +439,7 @@ export function PolymarketChat({
             }`}
           >
             <div
-              className={`max-w-[80%] rounded-lg px-3 py-2 text-sm ${
+              className={`max-w-[85%] sm:max-w-[80%] rounded-lg px-3 py-2 text-sm ${
                 message.role === "user"
                   ? "bg-emerald-600/20 text-white border border-emerald-500/30"
                   : "glass text-gray-200"

@@ -412,7 +412,10 @@ const flattenGammaEvents = (
 
     const marketId =
       event.id ??
-      normalizeString(referenceMarket?.id, referenceMarket?.slug) ??
+      normalizeString(
+        referenceMarket ? referenceMarket.id : undefined,
+        referenceMarket ? referenceMarket.slug : undefined
+      ) ??
       generateRandomId();
 
     const eventIsClosed = event.closed === true;
