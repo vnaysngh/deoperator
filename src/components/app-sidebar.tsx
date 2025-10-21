@@ -18,7 +18,8 @@ import {
   Clock,
   Plus,
   ChevronDown,
-  Trash2
+  Trash2,
+  Activity
   // TrendingUp,
   // History,
   // Shield,
@@ -78,7 +79,8 @@ const sessionsAreEqual = (
 const menuItems = [
   { title: "Trade", icon: ArrowLeftRight, url: "/trade" },
   { title: "Positions", icon: Wallet, url: "/positions" },
-  { title: "Transactions", icon: BarChart3, url: "/transactions" }
+  { title: "Transactions", icon: BarChart3, url: "/transactions" },
+  { title: "polyIntelligence", icon: Activity, url: "/polymarket" }
   // { title: "Liquidity", icon: TrendingUp, url: "/liquidity" },
 ];
 
@@ -111,21 +113,22 @@ export function AppSidebar() {
   const router = useRouter();
   const { address } = useAccount();
   const normalizedAddress = address?.toLowerCase() ?? null;
-  const [historySessions, setHistorySessions] = useState<SessionSummary[]>(() => {
-    if (!normalizedAddress) {
-      return [];
+  const [historySessions, setHistorySessions] = useState<SessionSummary[]>(
+    () => {
+      if (!normalizedAddress) {
+        return [];
+      }
+      const cached = sessionsCache.get(normalizedAddress);
+      return cached ? cached : [];
     }
-    const cached = sessionsCache.get(normalizedAddress);
-    return cached ? cached : [];
-  });
+  );
   const [historyOpen, setHistoryOpen] = useState(true);
   const [deletingSessionId, setDeletingSessionId] = useState<string | null>(
     null
   );
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-  const [sessionPendingDelete, setSessionPendingDelete] = useState<
-    SessionSummary | null
-  >(null);
+  const [sessionPendingDelete, setSessionPendingDelete] =
+    useState<SessionSummary | null>(null);
 
   const fetchHistorySessions = useCallback(async () => {
     if (!normalizedAddress) {
@@ -392,7 +395,6 @@ export function AppSidebar() {
             )}
           </SidebarGroup>
         )}
-
       </SidebarContent>
 
       <AlertDialog
@@ -417,9 +419,7 @@ export function AppSidebar() {
               Cancel
             </AlertDialogCancel>
             <AlertDialogAction
-              disabled={
-                deletingSessionId !== null || !sessionPendingDelete
-              }
+              disabled={deletingSessionId !== null || !sessionPendingDelete}
               onClick={() => {
                 if (sessionPendingDelete) {
                   void performDeleteSession(sessionPendingDelete.id);
