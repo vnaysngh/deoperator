@@ -680,7 +680,7 @@ export const normalizePolymarketMarkets = (
 export async function fetchPolymarketMarkets(): Promise<FetchPolymarketResult> {
   const requestInit: RequestInit = {
     headers: {
-      "User-Agent": "DeOperator/1.0 (polymarket dashboard)"
+      "User-Agent": "BasedOperator/1.0 (polymarket dashboard)"
     },
     cache: "no-store",
     next: {
@@ -799,7 +799,7 @@ export async function fetchRecentPolymarketEvents({
 
   const response = await fetch(url.toString(), {
     headers: {
-      "User-Agent": "DeOperator/1.0 (polymarket dashboard)"
+      "User-Agent": "BasedOperator/1.0 (polymarket dashboard)"
     },
     cache: "no-store"
   });

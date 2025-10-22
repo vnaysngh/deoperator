@@ -3,7 +3,7 @@ import "./global.css";
 import { Providers } from "@/components/Providers";
 
 export const metadata: Metadata = {
-  title: "DeOperator | AI-Powered Trading Terminal",
+  title: "BasedOperator | AI-Powered Trading Terminal",
   description:
     "Swap tokens across Ethereum, Base, and Arbitrum using natural language."
 };

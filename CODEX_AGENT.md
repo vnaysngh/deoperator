@@ -1,6 +1,6 @@
 # Codex Agent Notes
 
-This is a quick-reference for future Codex-style agents dropping into **Unipilot / DeOperator**, the natural-language trading demo.
+This is a quick-reference for future Codex-style agents dropping into **Unipilot / BasedOperator**, the natural-language trading demo.
 
 ## Mental Model
 

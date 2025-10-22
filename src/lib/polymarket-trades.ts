@@ -68,7 +68,9 @@ const toISOString = (value: unknown): string => {
   if (typeof value === "number") {
     const millis = value > 1_000_000_000_000 ? value : value * 1000;
     const date = new Date(millis);
-    return Number.isNaN(date.getTime()) ? new Date().toISOString() : date.toISOString();
+    return Number.isNaN(date.getTime())
+      ? new Date().toISOString()
+      : date.toISOString();
   }
 
   if (typeof value === "string") {
@@ -76,10 +78,14 @@ const toISOString = (value: unknown): string => {
     if (!Number.isNaN(numeric) && Number.isFinite(numeric)) {
       const millis = numeric > 1_000_000_000_000 ? numeric : numeric * 1000;
       const date = new Date(millis);
-      return Number.isNaN(date.getTime()) ? new Date().toISOString() : date.toISOString();
+      return Number.isNaN(date.getTime())
+        ? new Date().toISOString()
+        : date.toISOString();
     }
     const parsed = new Date(value);
-    return Number.isNaN(parsed.getTime()) ? new Date().toISOString() : parsed.toISOString();
+    return Number.isNaN(parsed.getTime())
+      ? new Date().toISOString()
+      : parsed.toISOString();
   }
 
   return new Date().toISOString();
@@ -175,12 +181,8 @@ const normalizeTrade = (raw: RawPolymarketTrade): PolymarketTrade => {
 
   return {
     id:
-      normalizeString(
-        raw.id,
-        raw.trade_id,
-        raw.transactionId,
-        raw.tx_id
-      ) ?? `trade:${Math.random().toString(36).slice(2)}`,
+      normalizeString(raw.id, raw.trade_id, raw.transactionId, raw.tx_id) ??
+      `trade:${Math.random().toString(36).slice(2)}`,
     marketId,
     marketQuestion,
     marketSlug,
@@ -270,7 +272,7 @@ export async function fetchPolymarketTrades({
 
   const response = await fetch(url.toString(), {
     headers: {
-      "User-Agent": "DeOperator/1.0 (polymarket dashboard)"
+      "User-Agent": "BasedOperator/1.0 (polymarket dashboard)"
     },
     cache: "no-store"
   });
@@ -288,11 +290,11 @@ export async function fetchPolymarketTrades({
 
   const normalized = json
     .map((item) => normalizeTrade(item as RawPolymarketTrade))
-    .filter((trade) => trade.notional !== null && trade.marketQuestion !== null);
+    .filter(
+      (trade) => trade.notional !== null && trade.marketQuestion !== null
+    );
 
-  const sinceBoundary = sinceMs
-    ? sinceMs
-    : Date.now() - 24 * 60 * 60 * 1000;
+  const sinceBoundary = sinceMs ? sinceMs : Date.now() - 24 * 60 * 60 * 1000;
 
   const filtered = normalized.filter((trade) => {
     const tradeTime = new Date(trade.timestamp).getTime();
@@ -302,9 +304,7 @@ export async function fetchPolymarketTrades({
     return tradeTime >= sinceBoundary;
   });
 
-  filtered.sort(
-    (left, right) => (right.notional ?? 0) - (left.notional ?? 0)
-  );
+  filtered.sort((left, right) => (right.notional ?? 0) - (left.notional ?? 0));
 
   return filtered.slice(0, limit);
 }

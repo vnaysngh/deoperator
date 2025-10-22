@@ -11,7 +11,11 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createAppKit } from "@reown/appkit/react";
 import { ErrorBoundary } from "./ErrorBoundary";
 import { networks, projectId, wagmiAdapter } from "@/lib/wagmi";
-import { arbitrum, base, /* bsc, */ mainnet /*, polygon */ } from "@reown/appkit/networks";
+import {
+  arbitrum,
+  base,
+  /* bsc, */ mainnet /*, polygon */
+} from "@reown/appkit/networks";
 
 type ProvidersProps = {
   children: ReactNode;
@@ -24,9 +28,9 @@ type AppKitWindow = Window &
   };
 
 const metadata = {
-  name: "DeOperator",
+  name: "BasedOperator",
   description: "AI-powered intent-based trading",
-  url: "https://deoperator.app",
+  url: "https://basedoperator.app",
   icons: ["https://avatars.githubusercontent.com/u/179229932"]
 };
 

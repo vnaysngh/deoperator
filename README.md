@@ -1,4 +1,4 @@
-# DeOperator
+# BasedOperator
 
 A modern, AI-powered interface for trading through CoW Protocol and staking via Morpho using natural language. Built with Next.js 15, Vercel AI SDK, and Moralis data services.
 
@@ -37,7 +37,7 @@ A modern, AI-powered interface for trading through CoW Protocol and staking via 
 
 ```bash
 git clone <your-repo-url>
-cd deoperator
+cd basedoperator
 npm install
 ```
 
@@ -99,7 +99,7 @@ Open [http://localhost:3000](http://localhost:3000) in your browser.
 ## Project Structure
 
 ```
-deoperator/
+basedoperator/
 ├── src/
 │   ├── app/
 │   │   ├── api/
