@@ -16,6 +16,7 @@ import {
   base,
   /* bsc, */ mainnet /*, polygon */
 } from "@reown/appkit/networks";
+import { appWalletMetadata } from "@/lib/appMetadata";
 
 type ProvidersProps = {
   children: ReactNode;
@@ -26,13 +27,6 @@ type AppKitWindow = Window &
   typeof globalThis & {
     __APP_KIT_MODAL__?: ReturnType<typeof createAppKit>;
   };
-
-const metadata = {
-  name: "BasedOperator",
-  description: "AI-powered intent-based trading",
-  url: "https://basedoperator.app",
-  icons: ["https://avatars.githubusercontent.com/u/179229932"]
-};
 
 function ensureAppKitInstance() {
   if (typeof window === "undefined") {
@@ -53,7 +47,7 @@ function ensureAppKitInstance() {
     projectId,
     networks: [mainnet, /* bsc, */ /* polygon, */ base, arbitrum],
     defaultNetwork: networks[0],
-    metadata,
+    metadata: appWalletMetadata,
     features: {
       analytics: true
     },

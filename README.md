@@ -1,4 +1,4 @@
-# BasedOperator
+# DeOperator
 
 A modern, AI-powered interface for trading through CoW Protocol and staking via Morpho using natural language. Built with Next.js 15, Vercel AI SDK, and Moralis data services.
 
@@ -7,7 +7,7 @@ A modern, AI-powered interface for trading through CoW Protocol and staking via 
 - **Natural Language Trading**: Simply describe what you want to trade in plain English
 - **AI-Powered Assistant**: GPT-4 powered chatbot understands trade requests and provides quotes
 - **Real-time Quotes**: Get instant intent-based quotes from CoW Protocol before executing trades
-- **Wallet Integration**: Secure wallet connection using Wagmi and WalletConnect
+- **Wallet Integration**: Secure wallet connection using Wagmi with Base Account or WalletConnect/AppKit
 - **Direct Execution**: Trades execute directly through CoW Protocol batch auctions
 - **Morpho Staking**: Surface top USDC and WETH vaults on Ethereum, Arbitrum, and Base with built-in approvals
 - **Cross-Chain Bridging**: Move ETH, USDC, USDT, and DAI across Ethereum, Arbitrum, and Base using Across Protocol
@@ -24,7 +24,7 @@ A modern, AI-powered interface for trading through CoW Protocol and staking via 
 ## Prerequisites
 
 - Node.js 18+ and npm
-- An Ethereum wallet (MetaMask, WalletConnect-compatible wallet, etc.)
+- An Ethereum wallet (MetaMask, WalletConnect-compatible wallet, Base Account, etc.)
 - OpenAI API key
 - Ethereum RPC endpoint (Infura, Alchemy, or similar)
 - WalletConnect Project ID
@@ -37,7 +37,7 @@ A modern, AI-powered interface for trading through CoW Protocol and staking via 
 
 ```bash
 git clone <your-repo-url>
-cd basedoperator
+cd deoperator
 npm install
 ```
 
@@ -99,7 +99,7 @@ Open [http://localhost:3000](http://localhost:3000) in your browser.
 ## Project Structure
 
 ```
-basedoperator/
+deoperator/
 ├── src/
 │   ├── app/
 │   │   ├── api/

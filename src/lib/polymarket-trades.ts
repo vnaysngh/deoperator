@@ -272,7 +272,7 @@ export async function fetchPolymarketTrades({
 
   const response = await fetch(url.toString(), {
     headers: {
-      "User-Agent": "BasedOperator/1.0 (polymarket dashboard)"
+      "User-Agent": "DeOperator/1.0 (polymarket dashboard)"
     },
     cache: "no-store"
   });

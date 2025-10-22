@@ -79,8 +79,8 @@ const sessionsAreEqual = (
 const menuItems = [
   { title: "Trade", icon: ArrowLeftRight, url: "/trade" },
   { title: "Positions", icon: Wallet, url: "/positions" },
-  { title: "Transactions", icon: BarChart3, url: "/transactions" }
-  // { title: "polyIntelligence", icon: Activity, url: "/poly-intelligence" }
+  { title: "Transactions", icon: BarChart3, url: "/transactions" },
+  { title: "polyIntelligence", icon: Activity, url: "/poly-intelligence" }
   // { title: "Liquidity", icon: TrendingUp, url: "/liquidity" },
 ];
 
@@ -254,7 +254,7 @@ export function AppSidebar() {
               className="hover:bg-white/5"
               style={{ gap: "0 rem" }}
             >
-              {/*  <div className="flex h-10 w-10 flex-col items-start justify-center gap-1 px-1.5">
+              <div className="flex h-10 w-10 flex-col items-start justify-center gap-1 px-1.5">
                 <span className="text-[10px] font-semibold uppercase tracking-[0.32em] text-primary-400">
                   DE
                 </span>
@@ -264,9 +264,9 @@ export function AppSidebar() {
                   </span>
                   OP
                 </span>
-              </div> */}
+              </div>
               <div className="flex flex-col gap-0.5 leading-none">
-                <span className="font-bold gradient-text">BasedOperator</span>
+                <span className="font-bold gradient-text">DeOperator</span>
                 <span className="text-xs text-gray-500">Trading Terminal</span>
               </div>
             </SidebarMenuButton>
