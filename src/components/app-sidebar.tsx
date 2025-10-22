@@ -19,7 +19,8 @@ import {
   Plus,
   ChevronDown,
   Trash2,
-  Activity
+  Activity,
+  Coins
   // TrendingUp,
   // History,
   // Shield,
@@ -80,7 +81,8 @@ const menuItems = [
   { title: "Trade", icon: ArrowLeftRight, url: "/trade" },
   { title: "Positions", icon: Wallet, url: "/positions" },
   { title: "Transactions", icon: BarChart3, url: "/transactions" },
-  { title: "polyIntelligence", icon: Activity, url: "/poly-intelligence" }
+  { title: "polyIntelligence", icon: Activity, url: "/poly-intelligence" },
+  { title: "basedCreators", icon: Coins, url: "/based-creators" }
   // { title: "Liquidity", icon: TrendingUp, url: "/liquidity" },
 ];
 

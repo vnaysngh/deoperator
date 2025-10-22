@@ -272,10 +272,41 @@ export async function POST(req: Request) {
       🌉 BRIDGING VIA ACROSS:
       - Bridge only the same token between chains (no cross-asset swaps) using Across Protocol.
       - Supported chains: Ethereum (1), Arbitrum (42161), Base (8453).
-      - Supported tokens: ETH, USDC, USDT, DAI. If a user asks for another token, let them know it isn’t supported yet.
+      - Supported tokens: ETH, USDC, USDT, DAI. If a user asks for another token, let them know it isn't supported yet.
       - ALWAYS collect the origin chain, destination chain, token, and amount before requesting a quote.
       - Call getBridgeQuote once you have the required details, then share the output amount, fee summary, and estimated fill time with the user.
       - Tell the user they can press the Bridge button in the UI to execute; the client will handle chain switching, approvals, and the deposit.
+
+      🪙 ZORA CREATOR COINS ON BASE:
+      - Track and analyze real Zora creator coins on Base chain using the official Zora SDK (@zoralabs/coins-sdk).
+      - All creator coins are on Base (chainId: 8453) and data comes directly from Zora's API.
+      - Use these tools when users ask about: "creator coins", "new launches", "trending coins", "top gainers", "market cap", "holders", etc.
+
+      AVAILABLE TOOLS:
+      1. getCreatorCoins - Fetch creator coins with real market data:
+         - queryType: 'new' (recent launches), 'trending' (high volume), 'top_gainers' (24h gainers), 'most_valuable' (by market cap)
+         - minMarketCap: Minimum market cap in USD (e.g., 10000 for $10K, 100000 for $100K)
+         - new24h: true to show only coins from last 24h
+         - Returns: symbol, name, marketCap, volume24h, priceChange24h, uniqueHolders, status
+
+      2. getTopCreatorCoinsByVolume - Get top N coins sorted by 24h volume
+         - limit: Number of top coins to return (default 5, max 20)
+         - Use when user asks "top 5 creator coins by volume" or similar
+
+      3. analyzeCreatorCoin - Analyze a specific coin's market performance
+         - coinSymbol: The creator coin symbol to analyze (e.g., 'ZORA', 'DEGEN')
+         - Returns market cap, volume, price change %, holders, and days since launch
+         - Use when user asks about a specific coin's performance
+
+      EXAMPLE QUERIES:
+      - "Show me new creator coins launched in the last 24h on Base" → getCreatorCoins with queryType: 'new', new24h: true
+      - "Top 5 creator coins by 24h volume" → getTopCreatorCoinsByVolume with limit: 5
+      - "Find coins with market cap > $100k" → getCreatorCoins with minMarketCap: 100000
+      - "What's the performance of ZORA coin?" → analyzeCreatorCoin with coinSymbol: "ZORA"
+      - "Show me top gainers in the last 24h" → getCreatorCoins with queryType: 'top_gainers'
+      - "Most valuable creator coins" → getCreatorCoins with queryType: 'most_valuable'
+
+      IMPORTANT: Trading links redirect to https://zora.co/collect/base:{address} - we don't facilitate trading directly.
 
       🔥 NATIVE CURRENCY SUPPORT:
       - Native blockchain tokens (ETH on Ethereum/Arbitrum/Base) are FULLY SUPPORTED
@@ -1996,6 +2027,248 @@ export async function POST(req: Request) {
               return toolError({
                 success: false,
                 userMessage: "Something went wrong. Want to try again?",
+                error: error instanceof Error ? error.message : "Unknown error"
+              });
+            }
+          }
+        }),
+        getCreatorCoins: tool({
+          description:
+            "Fetch Zora creator coins on Base using real Zora SDK data. Use when users ask about creator coins, new launches, trending coins, or top gainers. Returns real market data including market cap, volume, and holders.",
+          inputSchema: z.object({
+            queryType: z
+              .enum(["new", "trending", "top_gainers", "most_valuable"])
+              .optional()
+              .describe(
+                "Type of coins to fetch: 'new' (recent launches), 'trending' (high volume), 'top_gainers' (24h gainers), 'most_valuable' (by market cap)"
+              ),
+            minMarketCap: z
+              .number()
+              .min(0)
+              .optional()
+              .describe(
+                "Minimum market cap in USD. Examples: 10000 for $10K, 100000 for $100K"
+              ),
+            new24h: z
+              .boolean()
+              .optional()
+              .describe("If true, only return coins launched in the last 24 hours")
+          }),
+          execute: async ({ queryType, minMarketCap, new24h }) => {
+            console.log("[TOOL:getCreatorCoins] Fetching creator coins:", {
+              queryType,
+              minMarketCap,
+              new24h
+            });
+
+            try {
+              const params = new URLSearchParams();
+              if (queryType) params.append("type", queryType);
+              if (minMarketCap) params.append("minMarketCap", minMarketCap.toString());
+              if (new24h) params.append("new24h", "true");
+              params.append("limit", "20");
+
+              const response = await fetch(
+                `${process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000"}/api/zora/creator-coins?${params}`,
+                { cache: "no-store" }
+              );
+
+              if (!response.ok) {
+                throw new Error("Failed to fetch creator coins");
+              }
+
+              const data = (await response.json()) as {
+                coins: Array<{
+                  symbol: string;
+                  name: string;
+                  marketCap: number;
+                  volume24h: number;
+                  priceChange24h: number;
+                  uniqueHolders: number;
+                  createdAt: string;
+                  status: string;
+                }>;
+                count: number;
+              };
+
+              const coins = data.coins || [];
+
+              let summary = "";
+              if (new24h) {
+                summary = `Found ${coins.length} creator coins launched in the last 24 hours.`;
+              } else if (minMarketCap) {
+                summary = `Found ${coins.length} creator coins with market cap ≥ $${minMarketCap.toLocaleString()}.`;
+              } else if (queryType === "new") {
+                summary = `Found ${coins.length} recently launched creator coins.`;
+              } else if (queryType === "top_gainers") {
+                summary = `Found ${coins.length} top gaining creator coins in the last 24h.`;
+              } else {
+                summary = `Found ${coins.length} trending creator coins on Base.`;
+              }
+
+              return toolSuccess({
+                success: true,
+                message: summary,
+                coins: coins.slice(0, 10),
+                totalCount: coins.length
+              });
+            } catch (error) {
+              console.error("[TOOL:getCreatorCoins] Error:", error);
+              return toolError({
+                success: false,
+                userMessage:
+                  "I couldn't fetch creator coins right now. Want to try again?",
+                error: error instanceof Error ? error.message : "Unknown error"
+              });
+            }
+          }
+        }),
+        getTopCreatorCoinsByVolume: tool({
+          description:
+            "Get the top N creator coins sorted by 24h trading volume. Use when user asks for 'top creator coins' or 'highest volume creator coins'.",
+          inputSchema: z.object({
+            limit: z
+              .number()
+              .int()
+              .min(1)
+              .max(20)
+              .optional()
+              .describe("Number of top coins to return (default 5)")
+          }),
+          execute: async ({ limit }) => {
+            const effectiveLimit = limit ?? 5;
+
+            console.log("[TOOL:getTopCreatorCoinsByVolume] Fetching top coins:", {
+              limit: effectiveLimit
+            });
+
+            try {
+              const params = new URLSearchParams();
+              params.append("type", "trending");
+              params.append("limit", effectiveLimit.toString());
+
+              const response = await fetch(
+                `${process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000"}/api/zora/creator-coins?${params}`,
+                { cache: "no-store" }
+              );
+
+              if (!response.ok) {
+                throw new Error("Failed to fetch creator coins");
+              }
+
+              const data = (await response.json()) as {
+                coins: Array<{
+                  symbol: string;
+                  name: string;
+                  marketCap: number;
+                  volume24h: number;
+                  priceChange24h: number;
+                  uniqueHolders: number;
+                }>;
+              };
+
+              const coins = data.coins || [];
+
+              return toolSuccess({
+                success: true,
+                message: `Here are the top ${coins.length} creator coins by 24h volume:`,
+                coins,
+                totalCoins: coins.length
+              });
+            } catch (error) {
+              console.error("[TOOL:getTopCreatorCoinsByVolume] Error:", error);
+              return toolError({
+                success: false,
+                userMessage:
+                  "I couldn't fetch the top creator coins right now. Want to try again?",
+                error: error instanceof Error ? error.message : "Unknown error"
+              });
+            }
+          }
+        }),
+        analyzeCreatorCoin: tool({
+          description:
+            "Analyze a specific creator coin's market performance including market cap, volume, price change, and holder statistics. Use when user asks about a specific coin's performance or metrics.",
+          inputSchema: z.object({
+            coinSymbol: z
+              .string()
+              .describe(
+                "The creator coin symbol to analyze (e.g., 'ZORA', 'DEGEN')"
+              )
+          }),
+          execute: async ({ coinSymbol }) => {
+            console.log("[TOOL:analyzeCreatorCoin] Analyzing coin:", {
+              coinSymbol
+            });
+
+            try {
+              // Fetch trending coins and search for the specific one
+              const params = new URLSearchParams();
+              params.append("type", "trending");
+              params.append("limit", "50");
+
+              const response = await fetch(
+                `${process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000"}/api/zora/creator-coins?${params}`,
+                { cache: "no-store" }
+              );
+
+              if (!response.ok) {
+                throw new Error("Failed to fetch creator coins");
+              }
+
+              const data = (await response.json()) as {
+                coins: Array<{
+                  symbol: string;
+                  name: string;
+                  marketCap: number;
+                  volume24h: number;
+                  priceChange24h: number;
+                  uniqueHolders: number;
+                  createdAt: string;
+                  status: string;
+                }>;
+              };
+
+              const coins = data.coins || [];
+              const targetCoin = coins.find(
+                (coin) =>
+                  coin.symbol.toLowerCase() === coinSymbol.toLowerCase()
+              );
+
+              if (!targetCoin) {
+                return toolError({
+                  success: false,
+                  userMessage: `I couldn't find a creator coin with symbol ${coinSymbol}. It might not be in the top trending coins. Try checking the basedCreators page for a full list.`,
+                  error: "Coin not found"
+                });
+              }
+
+              const launchedDate = new Date(targetCoin.createdAt);
+              const daysSinceLaunch = Math.max(
+                1,
+                (Date.now() - launchedDate.getTime()) / (1000 * 60 * 60 * 24)
+              );
+
+              return toolSuccess({
+                success: true,
+                message: `Market analysis for ${targetCoin.symbol}:`,
+                coin: {
+                  symbol: targetCoin.symbol,
+                  name: targetCoin.name,
+                  marketCap: targetCoin.marketCap,
+                  volume24h: targetCoin.volume24h,
+                  priceChange24h: targetCoin.priceChange24h,
+                  uniqueHolders: targetCoin.uniqueHolders,
+                  status: targetCoin.status,
+                  daysSinceLaunch: Math.floor(daysSinceLaunch)
+                }
+              });
+            } catch (error) {
+              console.error("[TOOL:analyzeCreatorCoin] Error:", error);
+              return toolError({
+                success: false,
+                userMessage:
+                  "I couldn't analyze that coin right now. Want to try again?",
                 error: error instanceof Error ? error.message : "Unknown error"
               });
             }
