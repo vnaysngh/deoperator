@@ -19,6 +19,7 @@
     "@ai-sdk/google": "^2.0.23",
     "@ai-sdk/openai": "^2.0.49",
     "@ai-sdk/react": "^2.0.68",
+    "@coinbase/onchainkit": "^1.1.1",
     "@cowprotocol/cow-sdk": "^7.0.8",
     "@cowprotocol/sdk-config": "^0.1.0",
     "@cowprotocol/sdk-order-book": "^0.1.2",

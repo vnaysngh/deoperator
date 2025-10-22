@@ -8,7 +8,9 @@ import {
   useRef,
   useState
 } from "react";
-import { useAccount, useDisconnect, useEnsName, useSwitchChain } from "wagmi";
+import { useAccount, useDisconnect, useSwitchChain } from "wagmi";
+import { useName } from "@coinbase/onchainkit/identity";
+import { base } from "viem/chains";
 import { openAppKitModal } from "./Providers";
 
 function truncateAddress(address?: string) {
@@ -37,10 +39,9 @@ export function WalletConnect() {
   console.log(address, status, chainId, "wallet config");
   const { chains, switchChainAsync, isPending: isSwitching } = useSwitchChain();
   const { disconnectAsync, isPending: isDisconnecting } = useDisconnect();
-  const { data: ensName } = useEnsName({
-    address,
-    chainId: 1,
-    query: { enabled: Boolean(address) }
+  const { data: basename, isLoading: isLoadingBasename } = useName({
+    address: address as `0x${string}` | undefined,
+    chain: base
   });
 
   const [isChainMenuOpen, setChainMenuOpen] = useState(false);
@@ -116,6 +117,8 @@ export function WalletConnect() {
     );
   }
 
+  console.log(basename, "basename", isLoadingBasename);
+
   return (
     <div className="relative flex items-center gap-2 sm:gap-3">
       <div ref={chainMenuRef} className="relative">
@@ -183,7 +186,7 @@ export function WalletConnect() {
           type="button"
           className="px-3 sm:px-4 py-1.5 sm:py-2 glass rounded-xl text-xs sm:text-sm font-mono text-gray-300 border border-emerald-500/30 hover:bg-white/5 transition-all cursor-pointer"
         >
-          {ensName ?? truncateAddress(address)}
+          {basename ?? truncateAddress(address)}
         </button>
 
         {isAccountMenuOpen && (
