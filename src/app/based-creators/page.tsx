@@ -321,7 +321,7 @@ export default function BasedCreatorsPage() {
                   </div>
                 </div>
 
-                <div className="mt-4 flex items-center gap-4">
+                {/*   <div className="mt-4 flex items-center gap-4">
                   <label className="inline-flex items-center gap-2 text-xs text-gray-400 cursor-pointer">
                     <input
                       type="checkbox"
@@ -332,7 +332,7 @@ export default function BasedCreatorsPage() {
                     Show only coins launched in last 24h
                   </label>
                 </div>
-
+ */}
                 {isFetching && (
                   <div className="mt-4 inline-flex items-center gap-2 text-xs text-gray-500">
                     <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />

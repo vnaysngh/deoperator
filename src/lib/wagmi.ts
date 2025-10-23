@@ -18,7 +18,7 @@ if (!projectId) {
   );
 }
 
-export const networks = [mainnet, /* bsc, */ /* polygon, */ base, arbitrum];
+export const networks = [base, mainnet, arbitrum];
 
 export const wagmiAdapter = new WagmiAdapter({
   projectId: projectId || "demo",
