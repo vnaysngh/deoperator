@@ -11,7 +11,12 @@ import { TradingSdk } from "@cowprotocol/sdk-trading";
 import { OrderKind } from "@cowprotocol/sdk-order-book";
 import { SupportedChainId } from "@cowprotocol/sdk-config";
 import { ViemAdapter } from "@cowprotocol/sdk-viem-adapter";
-import { isAddress, type Address, type PublicClient, type WalletClient } from "viem";
+import {
+  isAddress,
+  type Address,
+  type PublicClient,
+  type WalletClient
+} from "viem";
 
 const PARTNER_FEE_BPS = 20;
 
@@ -31,17 +36,17 @@ function getPartnerFeeConfig(): PartnerFeeConfig {
     return cachedPartnerFee;
   }
 
-  const recipient = process.env.NEXT_PUBLIC_COWSWAP_PARTNER_FEE_RECIPIENT;
+  const recipient = process.env.NEXT_PUBLIC_PARTNER_FEE_RECIPIENT;
 
   if (!recipient) {
     throw new Error(
-      "Missing NEXT_PUBLIC_COWSWAP_PARTNER_FEE_RECIPIENT environment variable for CowSwap partner fee"
+      "Missing NEXT_PUBLIC_PARTNER_FEE_RECIPIENT environment variable for CowSwap partner fee"
     );
   }
 
   if (!isAddress(recipient)) {
     throw new Error(
-      `Invalid NEXT_PUBLIC_COWSWAP_PARTNER_FEE_RECIPIENT value: ${recipient}`
+      `Invalid NEXT_PUBLIC_PARTNER_FEE_RECIPIENT value: ${recipient}`
     );
   }
 

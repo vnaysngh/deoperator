@@ -152,9 +152,8 @@ export type SerializedBridgeQuote = {
   estimatedFillTimeSec: number;
   estimatedFillTimeFormatted: string;
   totalFee: FeeBreakdown;
-  lpFee: FeeBreakdown;
-  relayerGasFee: FeeBreakdown;
-  relayerCapitalFee: FeeBreakdown;
+  relayerGasFee?: FeeBreakdown;
+  relayerCapitalFee?: FeeBreakdown;
   limits: {
     minDepositWei: string;
     minDepositFormatted: string;
@@ -376,26 +375,20 @@ export async function getAcrossBridgeQuote(params: {
       destinationToken.decimals
     );
 
-    const totalFeeAmount =
-      quote.deposit.inputAmount > quote.deposit.outputAmount
-        ? quote.deposit.inputAmount - quote.deposit.outputAmount
-        : quote.fees.totalRelayFee.total;
+    const totalFeeAmount = quote.fees.totalRelayFee.total;
 
     const totalFee = calculateFeeBreakdown(
       totalFeeAmount,
       quote.deposit.inputAmount,
       originToken.decimals
     );
-    const lpFee = calculateFeeBreakdown(
-      quote.fees.lpFee.total,
-      quote.deposit.inputAmount,
-      originToken.decimals
-    );
+
     const relayerGasFee = calculateFeeBreakdown(
       quote.fees.relayerGasFee.total,
       quote.deposit.inputAmount,
       originToken.decimals
     );
+
     const relayerCapitalFee = calculateFeeBreakdown(
       quote.fees.relayerCapitalFee.total,
       quote.deposit.inputAmount,
@@ -441,7 +434,6 @@ export async function getAcrossBridgeQuote(params: {
       estimatedFillTimeSec: quote.estimatedFillTimeSec,
       estimatedFillTimeFormatted,
       totalFee,
-      lpFee,
       relayerGasFee,
       relayerCapitalFee,
       limits,

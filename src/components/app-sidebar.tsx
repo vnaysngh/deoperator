@@ -19,7 +19,8 @@ import {
   Plus,
   ChevronDown,
   Trash2,
-  Activity
+  Activity,
+  Coins
   // TrendingUp,
   // History,
   // Shield,
@@ -77,20 +78,17 @@ const sessionsAreEqual = (
 };
 
 const menuItems = [
-  { title: "Trade", icon: ArrowLeftRight, url: "/trade" },
-  { title: "Positions", icon: Wallet, url: "/positions" },
-  { title: "Transactions", icon: BarChart3, url: "/transactions" },
+  { title: "deGPT", icon: ArrowLeftRight, url: "/trade" },
+  { title: "basedCreators", icon: Coins, url: "/based-creators" },
   { title: "polyIntelligence", icon: Activity, url: "/poly-intelligence" }
   // { title: "Liquidity", icon: TrendingUp, url: "/liquidity" },
 ];
 
-/* const secondaryItems = [
-  { title: "Transaction History", icon: History, url: "/history" },
-  { title: "Security", icon: Shield, url: "/security" },
-  { title: "Settings", icon: Settings, url: "/settings" },
-  { title: "Help & Support", icon: HelpCircle, url: "/help" },
+const secondaryItems = [
+  { title: "Positions", icon: Wallet, url: "/positions" },
+  { title: "Transactions", icon: BarChart3, url: "/transactions" }
 ];
- */
+
 const formatRelativeTime = (input: string) => {
   const date = new Date(input);
   if (Number.isNaN(date.getTime())) {
@@ -308,6 +306,42 @@ export function AppSidebar() {
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
+
+        {secondaryItems.length > 0 && (
+          <SidebarGroup>
+            <SidebarGroupLabel className="text-gray-500 text-xs">
+              More
+            </SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                {secondaryItems.map((item) => {
+                  const active = isActivePath(item.url);
+                  return (
+                    <SidebarMenuItem key={item.title}>
+                      <SidebarMenuButton
+                        asChild
+                        isActive={active}
+                        className={cn(
+                          "transition-colors",
+                          "hover:bg-[#7fffd41a] hover:text-[#7fffd4]",
+                          "data-[active=true]:!bg-[#7fffd41a] data-[active=true]:!text-[#7fffd4]"
+                        )}
+                      >
+                        <Link
+                          href={item.url}
+                          aria-current={active ? "page" : undefined}
+                        >
+                          <item.icon className="w-4 h-4" />
+                          <span>{item.title}</span>
+                        </Link>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  );
+                })}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        )}
 
         {normalizedAddress && (
           <SidebarGroup>

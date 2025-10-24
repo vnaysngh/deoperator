@@ -8,8 +8,12 @@ import {
   useRef,
   useState
 } from "react";
-import { useAccount, useDisconnect, useEnsName, useSwitchChain } from "wagmi";
+import { useAccount, useConnect, useDisconnect, useSwitchChain } from "wagmi";
+import { useName } from "@coinbase/onchainkit/identity";
+import { base } from "viem/chains";
 import { openAppKitModal } from "./Providers";
+import { baseAccount } from "wagmi/connectors";
+import { appLogoUrl, appWalletMetadata } from "@/lib/appMetadata";
 
 function truncateAddress(address?: string) {
   if (!address) return "";
@@ -34,13 +38,12 @@ function useOutsideClick<T extends HTMLElement>(
 
 export function WalletConnect() {
   const { address, status, chainId } = useAccount();
-  console.log(address, status, chainId, "wallet config");
+  const { connectAsync, isPending: isConnectPending } = useConnect();
   const { chains, switchChainAsync, isPending: isSwitching } = useSwitchChain();
   const { disconnectAsync, isPending: isDisconnecting } = useDisconnect();
-  const { data: ensName } = useEnsName({
-    address,
-    chainId: 1,
-    query: { enabled: Boolean(address) }
+  const { data: basename } = useName({
+    address: address as `0x${string}` | undefined,
+    chain: base
   });
 
   const [isChainMenuOpen, setChainMenuOpen] = useState(false);
@@ -49,6 +52,8 @@ export function WalletConnect() {
 
   const chainMenuRef = useRef<HTMLDivElement>(null);
   const accountMenuRef = useRef<HTMLDivElement>(null);
+
+  const [isBaseError, setIsBaseError] = useState<string | null>(null);
 
   useOutsideClick(chainMenuRef as RefObject<HTMLElement>, () =>
     setChainMenuOpen(false)
@@ -79,6 +84,24 @@ export function WalletConnect() {
     [chainId, isSwitching, switchChainAsync]
   );
 
+  const handleBaseAccountConnect = useCallback(async () => {
+    if (isConnectPending) return;
+    try {
+      setIsBaseError(null);
+      await connectAsync({
+        connector: baseAccount({
+          appName: appWalletMetadata.name,
+          appLogoUrl: appLogoUrl
+        })
+      });
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Failed to sign in with Base";
+      console.error("[WalletConnect] Base Account connection error", error);
+      setIsBaseError(message);
+    }
+  }, [connectAsync, isConnectPending]);
+
   const handleDisconnect = useCallback(async () => {
     if (isDisconnecting) return;
     try {
@@ -105,14 +128,27 @@ export function WalletConnect() {
 
   if (!isConnected) {
     return (
-      <button
-        onClick={openAppKitModal}
-        type="button"
-        className="px-4 sm:px-6 py-2 sm:py-2.5 bg-gradient-to-r from-primary-600 to-primary-700 text-white rounded-xl hover:from-primary-500 hover:to-primary-600 transition-all font-medium shadow-glow hover:shadow-glow-lg text-sm sm:text-base"
-      >
-        <span className="hidden sm:inline">Connect Wallet</span>
-        <span className="sm:hidden">Connect</span>
-      </button>
+      <div className="flex flex-col sm:flex-row gap-2">
+        <button
+          onClick={handleBaseAccountConnect}
+          type="button"
+          disabled={isConnectPending}
+          className="px-4 sm:px-5 py-2 sm:py-2.5 glass rounded-xl border border-primary-500/60 text-xs sm:text-sm font-medium text-white hover:bg-primary-500/10 transition-all disabled:opacity-60 disabled:cursor-not-allowed"
+        >
+          {isConnectPending ? "Connecting…" : "Sign in with Base"}
+        </button>
+        <button
+          onClick={openAppKitModal}
+          type="button"
+          className="px-4 sm:px-6 py-2 sm:py-2.5 bg-gradient-to-r from-primary-600 to-primary-700 text-white rounded-xl hover:from-primary-500 hover:to-primary-600 transition-all font-medium shadow-glow hover:shadow-glow-lg text-sm sm:text-base"
+        >
+          <span className="hidden sm:inline">Connect Wallet</span>
+          <span className="sm:hidden">Connect</span>
+        </button>
+        {isBaseError && (
+          <p className="text-xs text-red-300 sm:self-center">{isBaseError}</p>
+        )}
+      </div>
     );
   }
 
@@ -183,7 +219,7 @@ export function WalletConnect() {
           type="button"
           className="px-3 sm:px-4 py-1.5 sm:py-2 glass rounded-xl text-xs sm:text-sm font-mono text-gray-300 border border-emerald-500/30 hover:bg-white/5 transition-all cursor-pointer"
         >
-          {ensName ?? truncateAddress(address)}
+          {basename ?? truncateAddress(address)}
         </button>
 
         {isAccountMenuOpen && (
