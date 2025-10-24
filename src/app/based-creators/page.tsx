@@ -192,9 +192,7 @@ export default function BasedCreatorsPage() {
       if (new24h) params.append("new24h", "true");
       if (currentCursor) params.append("cursor", currentCursor);
 
-      const response = await fetch(`/api/zora/creator-coins?${params}`, {
-        cache: "no-store"
-      });
+      const response = await fetch(`/api/zora/creator-coins?${params}`);
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));

@@ -91,7 +91,7 @@ export function WalletConnect() {
       await connectAsync({
         connector: baseAccount({
           appName: appWalletMetadata.name,
-          appLogoUrl: appLogoUrl ?? appWalletMetadata.url
+          appLogoUrl: appLogoUrl
         })
       });
     } catch (error) {

@@ -84,6 +84,9 @@ export async function POST(req: Request) {
   let chatSessionId: string | null = null;
   let sessionRecord: ChatSession | null = null;
 
+  // Derive base URL for internal API calls (works in both dev and production)
+  const baseUrl = new URL(req.url).origin;
+
   console.log("[API] POST /api/chat - Wallet:", walletAddress);
   console.log("[API] POST /api/chat - Session header:", providedSessionId);
   console.log(
@@ -2069,7 +2072,7 @@ export async function POST(req: Request) {
               params.append("limit", "20");
 
               const response = await fetch(
-                `${process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000"}/api/zora/creator-coins?${params}`,
+                `${baseUrl}/api/zora/creator-coins?${params}`,
                 { cache: "no-store" }
               );
 
@@ -2148,7 +2151,7 @@ export async function POST(req: Request) {
               params.append("limit", effectiveLimit.toString());
 
               const response = await fetch(
-                `${process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000"}/api/zora/creator-coins?${params}`,
+                `${baseUrl}/api/zora/creator-coins?${params}`,
                 { cache: "no-store" }
               );
 
@@ -2208,7 +2211,7 @@ export async function POST(req: Request) {
               params.append("limit", "50");
 
               const response = await fetch(
-                `${process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000"}/api/zora/creator-coins?${params}`,
+                `${baseUrl}/api/zora/creator-coins?${params}`,
                 { cache: "no-store" }
               );
 

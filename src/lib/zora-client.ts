@@ -274,8 +274,11 @@ export function filterByVolume(
 /**
  * Get Zora coin page URL
  */
-export function getZoraCoinUrl(coinAddress: string): string {
-  return `https://zora.co/coin/base:${coinAddress}`;
+export function getZoraCoinUrl(
+  coinAddress: string,
+  chain: string = "base"
+): string {
+  return `https://zora.co/coin/${chain}:${coinAddress}`;
 }
 
 /**

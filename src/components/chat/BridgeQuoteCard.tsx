@@ -26,7 +26,9 @@ function getExplorerUrl(chainId: number, txHash: string): string {
     42161: "https://arbiscan.io/tx/",
     8453: "https://basescan.org/tx/"
   };
-  return explorers[chainId] ? `${explorers[chainId]}${txHash}` : `https://etherscan.io/tx/${txHash}`;
+  return explorers[chainId]
+    ? `${explorers[chainId]}${txHash}`
+    : `https://etherscan.io/tx/${txHash}`;
 }
 
 export function BridgeQuoteCard({
@@ -104,7 +106,9 @@ export function BridgeQuoteCard({
     return {
       netFee: {
         label: "Net fee",
-        value: `${bridgeQuote.totalFee?.amountFormatted ?? "—"} ${bridgeQuote.tokenSymbol}`,
+        value: `${bridgeQuote.totalFee?.amountFormatted ?? "—"} ${
+          bridgeQuote.tokenSymbol
+        }`,
         percent: formatPercent(bridgeQuote.totalFee?.percentage ?? 0),
         breakdown: {
           networkFee: bridgeQuote.relayerGasFee?.amountFormatted
@@ -190,7 +194,7 @@ export function BridgeQuoteCard({
             abi: erc20Abi,
             functionName: "allowance",
             args: [address, deposit.spokePoolAddress]
-          }) as bigint;
+          });
 
           const requiredAmount = BigInt(bridgeQuote.inputAmountWei);
 
@@ -198,26 +202,36 @@ export function BridgeQuoteCard({
           if (allowance < requiredAmount) {
             setStatusMessage("Approving token spend...");
 
-            const { request } = await preparedClients.publicClient.simulateContract({
-              address: bridgeQuote.tokenAddress,
-              abi: erc20Abi,
-              functionName: "approve",
-              args: [deposit.spokePoolAddress, maxUint256],
-              account: address
-            });
+            const { request } =
+              await preparedClients.publicClient.simulateContract({
+                address: bridgeQuote.tokenAddress,
+                abi: erc20Abi,
+                functionName: "approve",
+                args: [deposit.spokePoolAddress, maxUint256],
+                account: address
+              });
 
-            const hash = await preparedClients.walletClient.writeContract(request);
+            const hash = await preparedClients.walletClient.writeContract(
+              request
+            );
             setStatusMessage("Waiting for approval confirmation...");
 
-            await preparedClients.publicClient.waitForTransactionReceipt({ hash });
+            await preparedClients.publicClient.waitForTransactionReceipt({
+              hash
+            });
             setStatusMessage("Approval confirmed. Preparing bridge...");
           }
         } catch (approvalError) {
           console.error("[CLIENT] Approval error:", approvalError);
-          if (approvalError instanceof Error && approvalError.message.toLowerCase().includes("user rejected")) {
+          if (
+            approvalError instanceof Error &&
+            approvalError.message.toLowerCase().includes("user rejected")
+          ) {
             setStatus("error");
             setStatusMessage(null);
-            setErrorMessage("Token approval was rejected. Please approve to continue.");
+            setErrorMessage(
+              "Token approval was rejected. Please approve to continue."
+            );
             return;
           }
           // Continue anyway, let SDK handle it
@@ -250,71 +264,71 @@ export function BridgeQuoteCard({
           originClient: preparedClients.publicClient,
           destinationClient,
           onProgress: (progress) => {
-          if (
-            progress.status === "error" ||
-            progress.status === "simulationError" ||
-            progress.status === "txError"
-          ) {
-            setStatus("error");
-            setStatusMessage(null);
-            setErrorMessage(
-              progress.error?.message ||
-                "Bridge transaction failed. Please try again."
-            );
-            return;
-          }
-
-          if (progress.step === "approve") {
-            if (progress.status === "txPending") {
-              setStatus("approving");
-              setStatusMessage("Approval pending in your wallet...");
-            }
-            if (progress.status === "txSuccess") {
-              setStatusMessage("Approval confirmed. Preparing deposit...");
-            }
-          }
-
-          if (progress.step === "deposit") {
-            if (progress.status === "simulationPending") {
-              setStatus("depositing");
-              setStatusMessage("Simulating deposit...");
-            }
-            if (progress.status === "txPending") {
-              setStatus("depositing");
-              setStatusMessage(
-                "Deposit submitted. Waiting for confirmation..."
+            if (
+              progress.status === "error" ||
+              progress.status === "simulationError" ||
+              progress.status === "txError"
+            ) {
+              setStatus("error");
+              setStatusMessage(null);
+              setErrorMessage(
+                progress.error?.message ||
+                  "Bridge transaction failed. Please try again."
               );
-              if (progress.txHash) {
-                setDepositTxHash(progress.txHash);
+              return;
+            }
+
+            if (progress.step === "approve") {
+              if (progress.status === "txPending") {
+                setStatus("approving");
+                setStatusMessage("Approval pending in your wallet...");
+              }
+              if (progress.status === "txSuccess") {
+                setStatusMessage("Approval confirmed. Preparing deposit...");
               }
             }
-            if (progress.status === "txSuccess") {
-              setStatus("waiting-fill");
-              setStatusMessage(
-                "Deposit confirmed! Waiting for the relayer to fill on the destination chain..."
-              );
-              if (progress.txReceipt?.transactionHash) {
-                setDepositTxHash(progress.txReceipt.transactionHash);
+
+            if (progress.step === "deposit") {
+              if (progress.status === "simulationPending") {
+                setStatus("depositing");
+                setStatusMessage("Simulating deposit...");
+              }
+              if (progress.status === "txPending") {
+                setStatus("depositing");
+                setStatusMessage(
+                  "Deposit submitted. Waiting for confirmation..."
+                );
+                if (progress.txHash) {
+                  setDepositTxHash(progress.txHash);
+                }
+              }
+              if (progress.status === "txSuccess") {
+                setStatus("waiting-fill");
+                setStatusMessage(
+                  "Deposit confirmed! Waiting for the relayer to fill on the destination chain..."
+                );
+                if (progress.txReceipt?.transactionHash) {
+                  setDepositTxHash(progress.txReceipt.transactionHash);
+                }
+              }
+            }
+
+            if (progress.step === "fill") {
+              if (progress.status === "txPending") {
+                setStatus("waiting-fill");
+                setStatusMessage(
+                  "Fill transaction pending on the destination chain..."
+                );
+              }
+              if (progress.status === "txSuccess") {
+                setStatus("success");
+                setStatusMessage(
+                  "Bridge filled! Funds are available on the destination chain."
+                );
               }
             }
           }
-
-          if (progress.step === "fill") {
-            if (progress.status === "txPending") {
-              setStatus("waiting-fill");
-              setStatusMessage(
-                "Fill transaction pending on the destination chain..."
-              );
-            }
-            if (progress.status === "txSuccess") {
-              setStatus("success");
-              setStatusMessage(
-                "Bridge filled! Funds are available on the destination chain."
-              );
-            }
-          }
-        }
-      });
+        });
       } finally {
         // Restore original console.error
         console.error = originalError;
