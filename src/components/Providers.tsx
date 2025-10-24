@@ -10,6 +10,7 @@ import {
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createAppKit } from "@reown/appkit/react";
 import { ErrorBoundary } from "./ErrorBoundary";
+import { DisclaimerDialog } from "./DisclaimerDialog";
 import { networks, projectId, wagmiAdapter } from "@/lib/wagmi";
 import {
   arbitrum,
@@ -112,6 +113,7 @@ export function Providers({ children, cookies }: ProvidersProps) {
         initialState={initialState}
       >
         <QueryClientProvider client={queryClient}>
+          <DisclaimerDialog />
           {children}
         </QueryClientProvider>
       </WagmiProvider>
