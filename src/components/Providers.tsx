@@ -46,7 +46,7 @@ function ensureAppKitInstance() {
   const modal = createAppKit({
     adapters: [wagmiAdapter],
     projectId,
-    networks: [mainnet, /* bsc, */ /* polygon, */ base, arbitrum],
+    networks: [base, mainnet, arbitrum],
     defaultNetwork: networks[0],
     metadata: appWalletMetadata,
     features: {
