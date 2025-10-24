@@ -8,12 +8,7 @@ import {
   useRef,
   useState
 } from "react";
-import {
-  useAccount,
-  useConnect,
-  useDisconnect,
-  useSwitchChain
-} from "wagmi";
+import { useAccount, useConnect, useDisconnect, useSwitchChain } from "wagmi";
 import { useName } from "@coinbase/onchainkit/identity";
 import { base } from "viem/chains";
 import { openAppKitModal } from "./Providers";

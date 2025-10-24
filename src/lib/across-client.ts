@@ -152,8 +152,8 @@ export type SerializedBridgeQuote = {
   estimatedFillTimeSec: number;
   estimatedFillTimeFormatted: string;
   totalFee: FeeBreakdown;
-  relayerGasFee: FeeBreakdown;
-  relayerCapitalFee: FeeBreakdown;
+  relayerGasFee?: FeeBreakdown;
+  relayerCapitalFee?: FeeBreakdown;
   limits: {
     minDepositWei: string;
     minDepositFormatted: string;
