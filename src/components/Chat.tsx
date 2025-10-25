@@ -586,6 +586,7 @@ export function Chat({ sessionId }: ChatProps) {
                                           name: string;
                                           balance: string;
                                           usdValue?: number;
+                                          logoUri?: string;
                                         },
                                         i: number
                                       ) => (
@@ -593,12 +594,33 @@ export function Chat({ sessionId }: ChatProps) {
                                           key={i}
                                           className="flex items-center justify-between p-2 rounded-lg bg-white/5 hover:bg-white/10 transition-colors"
                                         >
-                                          <div className="flex-1">
-                                            <div className="text-sm font-semibold text-white">
-                                              {bal.symbol}
+                                          <div className="flex items-center gap-3 flex-1">
+                                            {bal.logoUri ? (
+                                              <img
+                                                src={bal.logoUri}
+                                                alt={bal.symbol}
+                                                className="w-8 h-8 rounded-full"
+                                                onError={(e) => {
+                                                  const target = e.target as HTMLImageElement;
+                                                  target.style.display = 'none';
+                                                  const placeholder = target.nextElementSibling as HTMLElement;
+                                                  if (placeholder) placeholder.style.display = 'flex';
+                                                }}
+                                              />
+                                            ) : null}
+                                            <div
+                                              className="w-8 h-8 rounded-full bg-gradient-to-br from-primary-500 to-primary-600 flex items-center justify-center text-white text-xs font-bold"
+                                              style={{ display: bal.logoUri ? 'none' : 'flex' }}
+                                            >
+                                              {bal.symbol.charAt(0).toUpperCase()}
                                             </div>
-                                            <div className="text-xs text-gray-400">
-                                              {bal.name}
+                                            <div>
+                                              <div className="text-sm font-semibold text-white">
+                                                {bal.symbol}
+                                              </div>
+                                              <div className="text-xs text-gray-400">
+                                                {bal.name}
+                                              </div>
                                             </div>
                                           </div>
                                           <div className="text-right">

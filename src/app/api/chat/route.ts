@@ -1830,7 +1830,7 @@ export async function POST(req: Request) {
             chainId: z
               .number()
               .describe(
-                "Chain ID - REQUIRED. 1=Ethereum, 8453=Base, 42161=Arbitrum. Ask user if not specified."
+                "Chain ID - REQUIRED. 1=Ethereum, 8453=Base, 42161=Arbitrum, 6342=MegaETH Testnet. Ask user if not specified."
               ),
             minUsdValue: z
               .number()
@@ -1865,6 +1865,77 @@ export async function POST(req: Request) {
             try {
               const chainName = getChainName(chainId);
 
+              // MEGAETH SPECIAL HANDLING: Use GTE SDK for portfolio
+              if (chainId === 6342) {
+                console.log(
+                  "[TOOL:getWalletBalances] MegaETH detected - using GTE SDK for portfolio"
+                );
+
+                const { getGteSdk } = await import("@/lib/gte-sdk");
+                const sdk = getGteSdk();
+
+                // Fetch portfolio from GTE SDK
+                const portfolio = await sdk.getUserPortfolio(walletAddress);
+
+                console.log(
+                  "[TOOL:getWalletBalances] GTE portfolio received:",
+                  portfolio
+                );
+
+                // Transform GTE portfolio to our format
+                const balances = (portfolio.tokens || [])
+                  .filter((item: any) => {
+                    // Apply minUsdValue filter
+                    if (minUsdValue && item.balanceUsd < minUsdValue) {
+                      return false;
+                    }
+                    // Filter out zero balances
+                    return parseFloat(item.balance) > 0;
+                  })
+                  .slice(0, maxResults)
+                  .map((item: any) => ({
+                    symbol: item.token?.symbol || "UNKNOWN",
+                    name: item.token?.name || item.token?.symbol || "Unknown Token",
+                    balance: item.balance,
+                    usdValue: item.balanceUsd,
+                    usdPrice: item.token?.priceUsd,
+                    logoUri: item.token?.logoUri,
+                    formatted: item.balanceUsd
+                      ? `${parseFloat(item.balance).toFixed(6)} ${item.token?.symbol} ($${item.balanceUsd.toFixed(2)})`
+                      : `${parseFloat(item.balance).toFixed(6)} ${item.token?.symbol}`
+                  }));
+
+                if (balances.length === 0) {
+                  return toolError({
+                    success: false,
+                    userMessage: `No tokens found in your wallet on ${chainName}${
+                      minUsdValue ? ` with value >= $${minUsdValue}` : ""
+                    }.`,
+                    error: "No balances found"
+                  });
+                }
+
+                const totalValue =
+                  portfolio.totalUsdBalance ||
+                  balances.reduce(
+                    (sum: number, b: any) => sum + (b.usdValue || 0),
+                    0
+                  );
+
+                return toolSuccess({
+                  success: true,
+                  chain: chainName,
+                  chainId,
+                  balances,
+                  totalValue,
+                  count: balances.length,
+                  message: `Found ${balances.length} tokens${
+                    minUsdValue ? ` worth $${minUsdValue}+ each` : ""
+                  }. Total portfolio value: $${totalValue.toFixed(2)}`
+                });
+              }
+
+              // OTHER CHAINS: Use existing Moralis logic
               const viemChain = getViemChain(chainId);
               if (!viemChain) {
                 return toolError({
