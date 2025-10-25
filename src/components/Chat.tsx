@@ -434,14 +434,14 @@ export function Chat({ sessionId }: ChatProps) {
                   onClick={() => {
                     if (address) {
                       sendMessage({
-                        text: "What's the price of ETH on MegaETH?"
+                        text: "What's the price of ETH to USD on MegaETH?"
                       });
                     }
                   }}
                   disabled={!address}
                   className="w-full glass rounded-lg px-3 sm:px-4 py-2 text-gray-300 hover:bg-white/10 transition-colors cursor-pointer text-left disabled:cursor-not-allowed disabled:opacity-50"
                 >
-                  What&apos;s the price of ETH on MegaETH?
+                  What&apos;s the price of ETH to USD on MegaETH?
                 </button>
               </div>
             </div>

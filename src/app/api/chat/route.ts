@@ -258,10 +258,12 @@ export async function POST(req: Request) {
       - Ethereum (chainId: 1) ✅
       - Arbitrum (chainId: 42161) ✅
       - Base (chainId: 8453) ✅
+      - MegaETH Testnet (chainId: 6342) ✅
 
       Token Support:
       - Supports thousands of verified tokens via curated lists and CoinGecko enrichment
       - Popular tokens: WETH, USDC, USDT, DAI, WBTC, LINK, AAVE, ARB, cbETH, etc.
+      - MegaETH Testnet: ONLY supports tokens from the top 10 markets by TVL (dynamically fetched). The supported tokens are determined at swap time by checking the highest liquidity markets. When a user asks about supported tokens on MegaETH or tries to swap, the system will validate against the current top 10 markets.
       - Bridged and wrapped assets exist across networks (e.g., WETH on Base). Always confirm the chain the user specifies.
 
       🟦 STAKING VIA MORPHO:
@@ -382,8 +384,15 @@ export async function POST(req: Request) {
       - "ethereum", "eth", or "mainnet" → chainId: 1
       - "arbitrum" or "arb" → chainId: 42161
       - "base" → chainId: 8453
+      - "megaeth" or "mega eth" → chainId: 6342
 
       NEVER assume a default chain. ALWAYS ask if not specified.
+
+      USE CASE 3: USER ASKS WHAT TOKENS ARE SUPPORTED ON MEGAETH
+      When user asks what tokens they can swap on MegaETH:
+      - Use getMegaETHSupportedTokens tool
+      - This dynamically fetches the top 10 markets by TVL and returns all unique tokens
+      - Examples: "What tokens can I swap on MegaETH?", "What's supported on MegaETH?"
 
       🔄 ORDER CREATION FLOW (CRITICAL):
 
@@ -504,17 +513,17 @@ export async function POST(req: Request) {
         // Your existing custom tools
         getSwapQuote: tool({
           description:
-            "Get token information for a swap. Returns token addresses and decimals. The client-side SDK will fetch the actual quote. ONLY call this when you have confirmed: fromToken, toToken, amount, AND chainId with the user. Do NOT assume defaults. Supports Ethereum (1), Base (8453), and Arbitrum (42161).",
+            "Get token information for a swap. Returns token addresses and decimals. The client-side SDK will fetch the actual quote. ONLY call this when you have confirmed: fromToken, toToken, amount, AND chainId with the user. Do NOT assume defaults. Supports Ethereum (1), Base (8453), Arbitrum (42161), and MegaETH Testnet (6342).",
           inputSchema: z.object({
             fromToken: z
               .string()
               .describe(
-                "The token symbol to swap from (e.g., ARB, WETH, USDC) - REQUIRED, must be confirmed by user"
+                "The token symbol to swap from (e.g., ARB, WETH, USDC, USD) - REQUIRED, must be confirmed by user"
               ),
             toToken: z
               .string()
               .describe(
-                "The token symbol to swap to (e.g., USDC, DAI) - REQUIRED, must be confirmed by user"
+                "The token symbol to swap to (e.g., USDC, DAI, USD) - REQUIRED, must be confirmed by user"
               ),
             amount: z
               .string()
@@ -522,7 +531,7 @@ export async function POST(req: Request) {
             chainId: z
               .number()
               .describe(
-                "Chain ID - REQUIRED, must be explicitly provided by user. 1=Ethereum, 8453=Base, 42161=Arbitrum. NO DEFAULT - always ask if not specified"
+                "Chain ID - REQUIRED, must be explicitly provided by user. 1=Ethereum, 8453=Base, 42161=Arbitrum, 6342=MegaETH Testnet. NO DEFAULT - always ask if not specified"
               )
           }),
           execute: async ({ fromToken, toToken, amount, chainId }) => {
@@ -537,6 +546,142 @@ export async function POST(req: Request) {
               const normalizedFrom = normalizeTokenSymbol(fromToken, chainId);
               const normalizedTo = normalizeTokenSymbol(toToken, chainId);
               const chainName = getChainName(chainId);
+
+              // MEGAETH SPECIAL HANDLING: Get token details from GTE SDK markets
+              if (chainId === 6342) {
+                console.log(
+                  "[TOOL:getSwapQuote] MegaETH detected - fetching token details from top 10 markets"
+                );
+
+                try {
+                  const { getGteSdk } = await import("@/lib/gte-sdk");
+                  const sdk = getGteSdk();
+
+                  // Fetch top 10 markets by TVL
+                  const markets = await sdk.getMarkets({
+                    marketType: "amm",
+                    limit: 100 // Fetch more to sort
+                  });
+
+                  // Sort by TVL and take top 10
+                  const sortedMarkets = [...markets]
+                    .sort((a, b) => {
+                      const tvlA = Number(a.tvlUsd) || 0;
+                      const tvlB = Number(b.tvlUsd) || 0;
+                      return tvlB - tvlA;
+                    })
+                    .slice(0, 10);
+
+                  console.log(
+                    "[TOOL:getSwapQuote] Top 10 markets:",
+                    sortedMarkets.map((m) => ({
+                      pair: `${m.baseToken?.symbol}/${m.quoteToken?.symbol}`,
+                      tvl: m.tvlUsd
+                    }))
+                  );
+
+                  // Build a map of token symbol -> token details from markets
+                  const tokenMap = new Map<string, { address: string; decimals: number; symbol: string }>();
+
+                  for (const market of sortedMarkets) {
+                    if (market.baseToken?.symbol && market.baseToken?.address) {
+                      const symbol = market.baseToken.symbol.toUpperCase();
+                      if (!tokenMap.has(symbol)) {
+                        tokenMap.set(symbol, {
+                          address: market.baseToken.address,
+                          decimals: market.baseToken.decimals || 18,
+                          symbol: market.baseToken.symbol
+                        });
+                      }
+                    }
+                    if (market.quoteToken?.symbol && market.quoteToken?.address) {
+                      const symbol = market.quoteToken.symbol.toUpperCase();
+                      if (!tokenMap.has(symbol)) {
+                        tokenMap.set(symbol, {
+                          address: market.quoteToken.address,
+                          decimals: market.quoteToken.decimals || 18,
+                          symbol: market.quoteToken.symbol
+                        });
+                      }
+                    }
+                  }
+
+                  // Also support native ETH (which maps to WETH in markets)
+                  if (tokenMap.has("WETH")) {
+                    const weth = tokenMap.get("WETH")!;
+                    tokenMap.set("ETH", weth); // ETH uses same address as WETH for swaps
+                  }
+
+                  console.log(
+                    "[TOOL:getSwapQuote] Available tokens from top 10:",
+                    Array.from(tokenMap.keys())
+                  );
+
+                  const fromUpper = normalizedFrom.toUpperCase();
+                  const toUpper = normalizedTo.toUpperCase();
+
+                  // Check if both tokens are in the map
+                  if (!tokenMap.has(fromUpper) || !tokenMap.has(toUpper)) {
+                    const unsupportedTokens = [];
+                    if (!tokenMap.has(fromUpper)) unsupportedTokens.push(normalizedFrom);
+                    if (!tokenMap.has(toUpper)) unsupportedTokens.push(normalizedTo);
+
+                    const supportedList = Array.from(tokenMap.keys())
+                      .sort()
+                      .join(", ");
+
+                    return toolError({
+                      success: false,
+                      userMessage: `On MegaETH testnet, I can only swap tokens from the top 10 markets. ${unsupportedTokens.join(" and ")} ${unsupportedTokens.length === 1 ? "isn't" : "aren't"} in the top 10.\n\nSupported tokens: ${supportedList}`,
+                      error: `Unsupported token(s) on MegaETH: ${unsupportedTokens.join(", ")}`
+                    });
+                  }
+
+                  // Get token details from the map
+                  const fromTokenInfo = tokenMap.get(fromUpper)!;
+                  const toTokenInfo = tokenMap.get(toUpper)!;
+
+                  console.log(
+                    `[TOOL:getSwapQuote] ✓ Found both tokens in top 10 markets:`,
+                    { from: fromTokenInfo, to: toTokenInfo }
+                  );
+
+                  // Check if fromToken is native ETH
+                  const isNativeETH = fromUpper === "ETH";
+
+                  // Return token info for client-side SDK to use
+                  return toolSuccess({
+                    success: true,
+                    chain: chainName,
+                    chainId,
+                    fromToken: fromTokenInfo.symbol,
+                    toToken: toTokenInfo.symbol,
+                    amount,
+                    fromTokenAddress: isNativeETH ? NATIVE_CURRENCY_ADDRESS : fromTokenInfo.address,
+                    fromTokenDecimals: fromTokenInfo.decimals,
+                    toTokenAddress: toTokenInfo.address,
+                    toTokenDecimals: toTokenInfo.decimals,
+                    isNativeCurrency: isNativeETH,
+                    needsClientQuote: true,
+                    isMegaEth: true,
+                    message: `Got ${fromTokenInfo.symbol} → ${toTokenInfo.symbol} token details on ${chainName}. I'll fetch a fresh GTE quote next.`
+                  });
+                } catch (gteError) {
+                  console.error(
+                    "[TOOL:getSwapQuote] Error fetching MegaETH token details:",
+                    gteError
+                  );
+                  return toolError({
+                    success: false,
+                    userMessage:
+                      "I'm having trouble checking which tokens are available on MegaETH right now. Want to try again?",
+                    error:
+                      gteError instanceof Error
+                        ? gteError.message
+                        : "GTE SDK error"
+                  });
+                }
+              }
 
               // Check if fromToken is native currency (ETH, MATIC, etc.)
               if (isNativeCurrency(normalizedFrom, chainId)) {
@@ -578,7 +723,8 @@ export async function POST(req: Request) {
                   toTokenDecimals: toTokenInfo.decimals,
                   isNativeCurrency: true, // Flag for client to use postSellNativeCurrencyOrder
                   needsClientQuote: true,
-                  message: `Got ${nativeCurrency.symbol} → ${normalizedTo} token details on ${chainName}. I'll fetch a fresh CoW quote next.`
+                  isMegaEth: chainId === 6342, // Flag for client to use GTE SDK
+                  message: `Got ${nativeCurrency.symbol} → ${normalizedTo} token details on ${chainName}. I'll fetch a fresh ${chainId === 6342 ? 'GTE' : 'CoW'} quote next.`
                 });
                 console.log(
                   "[TOOL:getSwapQuote] Returning native currency success:",
@@ -633,7 +779,8 @@ export async function POST(req: Request) {
                 toTokenAddress: toTokenInfo.address,
                 toTokenDecimals: toTokenInfo.decimals,
                 needsClientQuote: true,
-                message: `Got ${normalizedFrom} → ${normalizedTo} token details on ${chainName}. I'll fetch a fresh CoW quote next.`
+                isMegaEth: chainId === 6342, // Flag for client to use GTE SDK
+                message: `Got ${normalizedFrom} → ${normalizedTo} token details on ${chainName}. I'll fetch a fresh ${chainId === 6342 ? 'GTE' : 'CoW'} quote next.`
               });
               console.log(
                 "[TOOL:getSwapQuote] Returning success result:",
@@ -1254,23 +1401,220 @@ export async function POST(req: Request) {
         }),
         getTokenUSDPrice: tool({
           description:
-            "Get the current USD price of a token. Use this when user asks for price without specifying the quote token (defaults to USD). ONLY call when you have confirmed the token symbol AND chainId. Do NOT assume defaults.",
+            "Get the current USD price of a token. Use this when user asks for price without specifying the quote token (defaults to USD). ONLY call when you have confirmed the token symbol AND chainId. Do NOT assume defaults. For MegaETH testnet (6342), uses GTE SDK markets to find token prices via USD-paired markets.",
           inputSchema: z.object({
             token: z
               .string()
               .describe(
-                "The token to get USD price for (e.g., ARB, WETH, USDC) - REQUIRED"
+                "The token to get USD price for (e.g., ARB, WETH, USDC, ETH) - REQUIRED"
               ),
             chainId: z
               .number()
               .describe(
-                "Chain ID - REQUIRED, must be explicitly provided by user. 1=Ethereum, 8453=Base, 42161=Arbitrum. NO DEFAULT - always ask if not specified"
+                "Chain ID - REQUIRED, must be explicitly provided by user. 1=Ethereum, 8453=Base, 42161=Arbitrum, 6342=MegaETH Testnet. NO DEFAULT - always ask if not specified"
               )
           }),
           execute: async ({ token, chainId }) => {
             try {
               const normalized = normalizeTokenSymbol(token, chainId);
               const chainName = getChainName(chainId);
+
+              // Special handling for MegaETH testnet - use GTE SDK markets
+              if (chainId === 6342) {
+                console.log(
+                  "[TOOL:getTokenUSDPrice] MegaETH testnet detected, using GTE SDK markets"
+                );
+
+                try {
+                  const { getGteSdk } = await import("@/lib/gte-sdk");
+                  const sdk = getGteSdk();
+
+                  // Fetch all markets to find the token pair
+                  const markets = await sdk.getMarkets({
+                    marketType: "amm",
+                    limit: 100
+                  });
+
+                  // Find a market with the requested token paired with USD specifically
+                  const tokenUpper = normalized.toUpperCase();
+
+                  let priceInUsd: number | null = null;
+                  let foundPair: string | null = null;
+
+                  console.log(
+                    `[TOOL:getTokenUSDPrice] Searching for ${tokenUpper} markets...`
+                  );
+
+                  // PRIORITY 1: Look for exact USD pairs ONLY
+                  for (const market of markets) {
+                    const baseSymbol = market.baseToken?.symbol?.toUpperCase();
+                    const quoteSymbol = market.quoteToken?.symbol?.toUpperCase();
+
+                    console.log(
+                      `[TOOL:getTokenUSDPrice] Checking market: ${baseSymbol}/${quoteSymbol}`
+                    );
+
+                    // Check for TOKEN/USD pair (exact USD match only)
+                    if (baseSymbol === tokenUpper && quoteSymbol === "USD") {
+                      console.log(
+                        `[TOOL:getTokenUSDPrice] Found ${tokenUpper}/USD market!`
+                      );
+
+                      // Get a quote to find the price (1 unit of base token)
+                      const quote = await sdk.getQuote({
+                        tokenIn: market.baseToken,
+                        tokenOut: market.quoteToken,
+                        amountIn: "1", // 1 unit of the token
+                        slippageBps: 50
+                      });
+
+                      console.log(
+                        `[TOOL:getTokenUSDPrice] Quote result:`,
+                        quote
+                      );
+
+                      priceInUsd = parseFloat(quote.expectedAmountOut);
+                      foundPair = `${baseSymbol}/${quoteSymbol}`;
+                      break;
+                    }
+                    // Check for USD/TOKEN pair (inverse)
+                    else if (quoteSymbol === tokenUpper && baseSymbol === "USD") {
+                      console.log(
+                        `[TOOL:getTokenUSDPrice] Found USD/${tokenUpper} market (inverse)!`
+                      );
+
+                      // Inverse pair: USD/TOKEN - need to invert the price
+                      const quote = await sdk.getQuote({
+                        tokenIn: market.quoteToken,
+                        tokenOut: market.baseToken,
+                        amountIn: "1",
+                        slippageBps: 50
+                      });
+
+                      console.log(
+                        `[TOOL:getTokenUSDPrice] Quote result:`,
+                        quote
+                      );
+
+                      // Price of 1 TOKEN in USD = 1 / (amount of TOKEN we get for 1 USD)
+                      const tokenPerUsd = parseFloat(quote.expectedAmountOut);
+                      if (tokenPerUsd > 0) {
+                        priceInUsd = 1 / tokenPerUsd;
+                      }
+                      foundPair = `${quoteSymbol}/${baseSymbol}`;
+                      break;
+                    }
+                  }
+
+                  // PRIORITY 2: If no USD pair found, try other stablecoins
+                  if (priceInUsd === null) {
+                    console.log(
+                      `[TOOL:getTokenUSDPrice] No USD pair found, trying other stablecoins...`
+                    );
+
+                    const fallbackStables = ["USDC", "USDT", "DAI"];
+
+                    for (const market of markets) {
+                      const baseSymbol = market.baseToken?.symbol?.toUpperCase();
+                      const quoteSymbol =
+                        market.quoteToken?.symbol?.toUpperCase();
+
+                      if (
+                        baseSymbol === tokenUpper &&
+                        fallbackStables.includes(quoteSymbol)
+                      ) {
+                        console.log(
+                          `[TOOL:getTokenUSDPrice] Found ${tokenUpper}/${quoteSymbol} market as fallback`
+                        );
+
+                        const quote = await sdk.getQuote({
+                          tokenIn: market.baseToken,
+                          tokenOut: market.quoteToken,
+                          amountIn: "1",
+                          slippageBps: 50
+                        });
+
+                        priceInUsd = parseFloat(quote.expectedAmountOut);
+                        foundPair = `${baseSymbol}/${quoteSymbol}`;
+                        break;
+                      } else if (
+                        quoteSymbol === tokenUpper &&
+                        fallbackStables.includes(baseSymbol)
+                      ) {
+                        console.log(
+                          `[TOOL:getTokenUSDPrice] Found ${baseSymbol}/${tokenUpper} market as fallback (inverse)`
+                        );
+
+                        const quote = await sdk.getQuote({
+                          tokenIn: market.quoteToken,
+                          tokenOut: market.baseToken,
+                          amountIn: "1",
+                          slippageBps: 50
+                        });
+
+                        const tokenPerUsd = parseFloat(quote.expectedAmountOut);
+                        if (tokenPerUsd > 0) {
+                          priceInUsd = 1 / tokenPerUsd;
+                        }
+                        foundPair = `${quoteSymbol}/${baseSymbol}`;
+                        break;
+                      }
+                    }
+                  }
+
+                  if (priceInUsd === null) {
+                    return toolError({
+                      success: false,
+                      userMessage: `I couldn't find a ${tokenUpper}/USD market on MegaETH testnet. The available markets might not include this token paired with a stablecoin.`,
+                      error: `No USD-paired market found for ${tokenUpper}`
+                    });
+                  }
+
+                  // Format price based on magnitude
+                  let formattedPrice: string;
+                  if (priceInUsd >= 1000000) {
+                    // Millions: 9.47M
+                    formattedPrice = `${(priceInUsd / 1000000).toFixed(2)}M`;
+                  } else if (priceInUsd >= 1000) {
+                    // Thousands: 9.47K
+                    formattedPrice = `${(priceInUsd / 1000).toFixed(2)}K`;
+                  } else if (priceInUsd >= 1) {
+                    // Regular: 1234.56
+                    formattedPrice = priceInUsd.toFixed(2);
+                  } else {
+                    // Small: 0.000123
+                    formattedPrice = priceInUsd.toFixed(6);
+                  }
+
+                  console.log(
+                    `[TOOL:getTokenUSDPrice] Final price: ${tokenUpper} = $${formattedPrice} (${priceInUsd}) via ${foundPair}`
+                  );
+
+                  return toolSuccess({
+                    success: true,
+                    chain: chainName,
+                    chainId,
+                    token: tokenUpper,
+                    price: formattedPrice,
+                    priceNumber: priceInUsd,
+                    marketPair: foundPair,
+                    message: `${tokenUpper} is currently $${formattedPrice} USD on ${chainName} (via ${foundPair} market)`
+                  });
+                } catch (gteError) {
+                  console.error(
+                    "[TOOL:getTokenUSDPrice] GTE SDK error:",
+                    gteError
+                  );
+                  return toolError({
+                    success: false,
+                    userMessage: `I couldn't fetch the price for ${normalized} on MegaETH testnet. The market data might be unavailable right now.`,
+                    error:
+                      gteError instanceof Error
+                        ? gteError.message
+                        : "GTE SDK error"
+                  });
+                }
+              }
 
               // Check if this is a native currency (ETH, MATIC/POL/POLYGON)
               if (isNativeCurrency(normalized, chainId)) {
@@ -1391,6 +1735,90 @@ export async function POST(req: Request) {
                   error instanceof Error
                     ? error.message
                     : "Failed to get USD price"
+              });
+            }
+          }
+        }),
+        getMegaETHSupportedTokens: tool({
+          description:
+            "Get the list of currently supported tokens on MegaETH Testnet. This fetches the top 10 markets by TVL and returns all unique tokens from those markets. Use this when a user asks what tokens they can swap on MegaETH.",
+          inputSchema: z.object({}),
+          execute: async () => {
+            console.log(
+              "[TOOL:getMegaETHSupportedTokens] Fetching supported tokens from top 10 markets"
+            );
+
+            try {
+              const { getGteSdk } = await import("@/lib/gte-sdk");
+              const sdk = getGteSdk();
+
+              // Fetch all markets
+              const markets = await sdk.getMarkets({
+                marketType: "amm",
+                limit: 100
+              });
+
+              // Sort by TVL and take top 10
+              const sortedMarkets = [...markets]
+                .sort((a, b) => {
+                  const tvlA = Number(a.tvlUsd) || 0;
+                  const tvlB = Number(b.tvlUsd) || 0;
+                  return tvlB - tvlA;
+                })
+                .slice(0, 10);
+
+              console.log(
+                "[TOOL:getMegaETHSupportedTokens] Top 10 markets by TVL:",
+                sortedMarkets.map((m) => ({
+                  pair: `${m.baseToken?.symbol}/${m.quoteToken?.symbol}`,
+                  tvl: m.tvlUsd
+                }))
+              );
+
+              // Extract all unique tokens
+              const supportedTokens = new Set<string>();
+              const marketPairs: string[] = [];
+
+              for (const market of sortedMarkets) {
+                if (market.baseToken?.symbol) {
+                  supportedTokens.add(market.baseToken.symbol.toUpperCase());
+                }
+                if (market.quoteToken?.symbol) {
+                  supportedTokens.add(market.quoteToken.symbol.toUpperCase());
+                }
+                marketPairs.push(
+                  `${market.baseToken?.symbol}/${market.quoteToken?.symbol}`
+                );
+              }
+
+              // Also support native ETH (which maps to WETH in markets)
+              if (supportedTokens.has("WETH")) {
+                supportedTokens.add("ETH");
+              }
+
+              const tokenList = Array.from(supportedTokens).sort();
+
+              console.log(
+                "[TOOL:getMegaETHSupportedTokens] Supported tokens:",
+                tokenList
+              );
+
+              return toolSuccess({
+                success: true,
+                supportedTokens: tokenList,
+                topMarkets: marketPairs,
+                message: `On MegaETH Testnet, I can swap these tokens from the top 10 markets: ${tokenList.join(", ")}`
+              });
+            } catch (error) {
+              console.error(
+                "[TOOL:getMegaETHSupportedTokens] Error:",
+                error
+              );
+              return toolError({
+                success: false,
+                userMessage:
+                  "I'm having trouble fetching the supported tokens on MegaETH right now. Want to try again?",
+                error: error instanceof Error ? error.message : "Unknown error"
               });
             }
           }
@@ -1906,7 +2334,7 @@ export async function POST(req: Request) {
         }),
         getSwapQuoteForEntireBalance: tool({
           description:
-            "Get a swap quote for the user's ENTIRE balance of a token. Use this ONLY when user explicitly says 'swap my whole/all/entire balance'. Returns token info and triggers client-side balance fetch + quote.",
+            "Get a swap quote for the user's ENTIRE balance of a token. Use this ONLY when user explicitly says 'swap my whole/all/entire balance'. Returns token info and triggers client-side balance fetch + quote. On MegaETH (6342), only tokens from the top 10 markets by TVL are supported.",
           inputSchema: z.object({
             fromToken: z
               .string()
@@ -1917,7 +2345,7 @@ export async function POST(req: Request) {
             chainId: z
               .number()
               .describe(
-                "Chain ID - REQUIRED. 1=Ethereum, 8453=Base, 42161=Arbitrum"
+                "Chain ID - REQUIRED. 1=Ethereum, 8453=Base, 42161=Arbitrum, 6342=MegaETH Testnet"
               )
           }),
           execute: async ({ fromToken, toToken, chainId }) => {
@@ -1943,6 +2371,136 @@ export async function POST(req: Request) {
               const chainName = getChainName(chainId);
               const normalizedFrom = normalizeTokenSymbol(fromToken, chainId);
               const normalizedTo = normalizeTokenSymbol(toToken, chainId);
+
+              // MEGAETH SPECIAL HANDLING: Get token details from GTE SDK markets
+              if (chainId === 6342) {
+                console.log(
+                  "[TOOL:getSwapQuoteForEntireBalance] MegaETH detected - fetching tokens from top 10 markets"
+                );
+
+                try {
+                  const { getGteSdk } = await import("@/lib/gte-sdk");
+                  const sdk = getGteSdk();
+
+                  // Fetch top 10 markets by TVL
+                  const markets = await sdk.getMarkets({
+                    marketType: "amm",
+                    limit: 100
+                  });
+
+                  const sortedMarkets = [...markets]
+                    .sort((a, b) => {
+                      const tvlA = Number(a.tvlUsd) || 0;
+                      const tvlB = Number(b.tvlUsd) || 0;
+                      return tvlB - tvlA;
+                    })
+                    .slice(0, 10);
+
+                  // Build a map of token symbol -> token details from markets
+                  const tokenMap = new Map<
+                    string,
+                    { address: string; decimals: number; symbol: string }
+                  >();
+
+                  for (const market of sortedMarkets) {
+                    if (market.baseToken?.symbol && market.baseToken?.address) {
+                      const symbol = market.baseToken.symbol.toUpperCase();
+                      if (!tokenMap.has(symbol)) {
+                        tokenMap.set(symbol, {
+                          address: market.baseToken.address,
+                          decimals: market.baseToken.decimals || 18,
+                          symbol: market.baseToken.symbol
+                        });
+                      }
+                    }
+                    if (
+                      market.quoteToken?.symbol &&
+                      market.quoteToken?.address
+                    ) {
+                      const symbol = market.quoteToken.symbol.toUpperCase();
+                      if (!tokenMap.has(symbol)) {
+                        tokenMap.set(symbol, {
+                          address: market.quoteToken.address,
+                          decimals: market.quoteToken.decimals || 18,
+                          symbol: market.quoteToken.symbol
+                        });
+                      }
+                    }
+                  }
+
+                  // Also support native ETH (which maps to WETH in markets)
+                  if (tokenMap.has("WETH")) {
+                    const weth = tokenMap.get("WETH")!;
+                    tokenMap.set("ETH", weth); // ETH uses same address as WETH for swaps
+                  }
+
+                  const fromUpper = normalizedFrom.toUpperCase();
+                  const toUpper = normalizedTo.toUpperCase();
+
+                  // Check if both tokens are in the map
+                  if (!tokenMap.has(fromUpper) || !tokenMap.has(toUpper)) {
+                    const unsupportedTokens = [];
+                    if (!tokenMap.has(fromUpper))
+                      unsupportedTokens.push(normalizedFrom);
+                    if (!tokenMap.has(toUpper))
+                      unsupportedTokens.push(normalizedTo);
+
+                    const supportedList = Array.from(tokenMap.keys())
+                      .sort()
+                      .join(", ");
+
+                    return toolError({
+                      success: false,
+                      userMessage: `On MegaETH testnet, I can only swap tokens from the top 10 markets. ${unsupportedTokens.join(" and ")} ${unsupportedTokens.length === 1 ? "isn't" : "aren't"} in the top 10.\n\nSupported tokens: ${supportedList}`,
+                      error: `Unsupported token(s) on MegaETH: ${unsupportedTokens.join(", ")}`
+                    });
+                  }
+
+                  console.log(
+                    `[TOOL:getSwapQuoteForEntireBalance] ✓ Both tokens found in top 10 markets`
+                  );
+
+                  // Get token details from the map (NOT from token database!)
+                  const fromTokenInfo = tokenMap.get(fromUpper)!;
+                  const toTokenInfo = tokenMap.get(toUpper)!;
+
+                  const isNativeETH = fromUpper === "ETH";
+
+                  // Return token info for client-side SDK to use
+                  return toolSuccess({
+                    success: true,
+                    chain: chainName,
+                    chainId,
+                    fromToken: fromTokenInfo.symbol,
+                    toToken: toTokenInfo.symbol,
+                    fromTokenAddress: isNativeETH
+                      ? NATIVE_CURRENCY_ADDRESS
+                      : fromTokenInfo.address,
+                    fromTokenDecimals: fromTokenInfo.decimals,
+                    toTokenAddress: toTokenInfo.address,
+                    toTokenDecimals: toTokenInfo.decimals,
+                    isNativeCurrency: isNativeETH,
+                    needsClientBalanceFetch: true,
+                    needsClientQuote: true,
+                    isMegaEth: true,
+                    message: `Checking your ${fromTokenInfo.symbol} balance on ${chainName}...`
+                  });
+                } catch (gteError) {
+                  console.error(
+                    "[TOOL:getSwapQuoteForEntireBalance] Error fetching MegaETH markets:",
+                    gteError
+                  );
+                  return toolError({
+                    success: false,
+                    userMessage:
+                      "I'm having trouble checking which tokens are available on MegaETH right now. Want to try again?",
+                    error:
+                      gteError instanceof Error
+                        ? gteError.message
+                        : "GTE SDK error"
+                  });
+                }
+              }
 
               // Get token information for both tokens
               const { getTokenBySymbol } = await import("@/lib/tokens");

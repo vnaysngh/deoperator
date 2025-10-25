@@ -120,9 +120,7 @@ export default function PortfolioPage() {
 
   const {
     data: megaETHData,
-    isLoading: megaETHLoading,
-    error: megaETHError,
-    refetch: refetchMegaETH
+    isLoading: megaETHLoading
   } = useQuery({
     queryKey: ["megaeth-portfolio", address],
     queryFn: () => fetchMegaETHPortfolio(address!),

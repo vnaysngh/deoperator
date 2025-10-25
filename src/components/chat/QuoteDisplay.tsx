@@ -136,9 +136,73 @@ export function QuoteDisplay({
     }
 
     try {
-      console.log("[CLIENT] Fetching quote with Trading SDK...");
+      // Check if this is MegaETH - use GTE SDK, otherwise use CoW SDK
+      const isMegaEth = tokenInfo.isMegaEth || chainId === 6342;
 
-      // Import and use the client SDK
+      if (isMegaEth) {
+        console.log("[CLIENT] Fetching quote with GTE SDK...");
+
+        // Import and use the GTE SDK
+        const { getGteSwapQuote } = await import("@/lib/gte-swap-client");
+
+        const gteQuote = await getGteSwapQuote({
+          sellToken: fromTokenAddress as Address,
+          buyToken: toTokenAddress as Address,
+          sellAmount: amount.toString(),
+          sellDecimals: fromTokenDecimals,
+          buyDecimals: toTokenDecimals,
+          sellSymbol: tokenInfo.fromToken || "TOKEN",
+          buySymbol: tokenInfo.toToken || "TOKEN"
+        });
+
+        // Format amounts for display (similar to CoW quote formatting)
+        const formatQuoteAmount = (value: bigint | string, decimals: number) => {
+          const normalized = formatUnits(BigInt(value), decimals);
+          return Number(normalized).toFixed(6);
+        };
+
+        const slippagePercent = ((gteQuote.slippageBps || 50) / 100).toFixed(2);
+
+        // Build quote object with flat structure for UI
+        const formattedQuote = {
+          buyAmount: formatQuoteAmount(gteQuote.expectedAmountOutAtomic, toTokenDecimals),
+          buyAmountAfterFees: formatQuoteAmount(gteQuote.minAmountOutAtomic, toTokenDecimals),
+          feeAmount: "0.000000", // GTE doesn't charge separate network fees
+          slippagePercent,
+          gteQuote, // Store raw quote for order submission
+          postSwapOrderFromQuote: async () => {
+            console.log("[GTE CLIENT] Submitting swap order...");
+            const { submitGteSwap } = await import("@/lib/gte-swap-client");
+
+            const result = await submitGteSwap({
+              quote: gteQuote,
+              userAddress: address!,
+              publicClient: activePublicClient,
+              walletClient: activeWalletClient,
+              useNativeIn: tokenInfo.isNativeCurrency || false,
+              useNativeOut: false
+            });
+
+            return result.txHash;
+          }
+        };
+
+        setQuote(formattedQuote);
+        setLoading(false);
+        setCountdown(30);
+
+        // Update global latest timestamp
+        if (latestQuoteTimestamp < quoteTimestamp) {
+          latestQuoteTimestamp = quoteTimestamp;
+          notifyQuoteChange();
+        }
+
+        return;
+      }
+
+      console.log("[CLIENT] Fetching quote with CoW Trading SDK...");
+
+      // Import and use the CoW client SDK
       const { getSwapQuote } = await import("@/lib/cowswap-client");
 
       const quoteResponse = await getSwapQuote(
@@ -255,7 +319,11 @@ export function QuoteDisplay({
     quoteTimestamp,
     toTokenDecimals,
     toTokenAddress,
-    walletClient
+    walletClient,
+    tokenInfo.fromToken,
+    tokenInfo.isMegaEth,
+    tokenInfo.isNativeCurrency,
+    tokenInfo.toToken
   ]);
 
   useEffect(() => {
@@ -415,7 +483,7 @@ export function QuoteDisplay({
             <div className="pt-2 mt-2 border-t border-white/5">
               <div className="text-gray-500 text-xs">Route</div>
               <div className="text-white text-sm">
-                {tokenInfo.fromToken} → [Batch Auction] → {tokenInfo.toToken}
+                {tokenInfo.fromToken} → {tokenInfo.toToken}
               </div>
             </div>
 

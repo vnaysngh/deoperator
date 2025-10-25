@@ -50,6 +50,14 @@ export const NATIVE_CURRENCIES: Record<number, NativeCurrency> = {
     chainId: 8453,
     aliases: ['eth', 'ethereum', 'ether'],
   },
+  // MegaETH Testnet
+  6342: {
+    symbol: 'ETH',
+    name: 'Ethereum',
+    decimals: 18,
+    chainId: 6342,
+    aliases: ['eth', 'ethereum', 'ether'],
+  },
 };
 
 /**

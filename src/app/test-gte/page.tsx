@@ -4,9 +4,11 @@ import { useState, useEffect } from "react";
 import { getGteSdk } from "@/lib/gte-sdk";
 
 export default function TestGtePage() {
+  /* eslint-disable @typescript-eslint/no-explicit-any */
   const [config, setConfig] = useState<any>(null);
   const [markets, setMarkets] = useState<any[]>([]);
   const [quote, setQuote] = useState<any>(null);
+  /* eslint-enable @typescript-eslint/no-explicit-any */
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -132,7 +134,7 @@ export default function TestGtePage() {
                     rel="noopener noreferrer"
                     className="text-emerald-400 hover:text-emerald-300 underline"
                   >
-                    {config.explorerUrl.replace("https://", "")}
+                    {config.explorerUrl?.replace("https://", "")}
                   </a>
                 </div>
               </div>

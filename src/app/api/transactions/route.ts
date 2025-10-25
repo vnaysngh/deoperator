@@ -59,12 +59,30 @@ interface BlockscoutResponse {
 }
 
 /**
+ * Normalized transaction format matching Zapper's structure
+ */
+interface NormalizedTransaction {
+  hash: string;
+  network: string;
+  timestamp: number;
+  from: string;
+  fromLabel: string | null;
+  to: string | null;
+  toLabel: string | null;
+  value: string;
+  description: string | null;
+  tokenDeltas: never[];
+  fungibleDeltas: never[];
+  type: string;
+}
+
+/**
  * Fetch transactions from Blockscout API for MegaETH testnet
  */
 async function fetchBlockscoutTransactions(
   address: string,
   cursor?: string
-): Promise<{ transactions: any[]; cursor: string | null; hasNextPage: boolean }> {
+): Promise<{ transactions: NormalizedTransaction[]; cursor: string | null; hasNextPage: boolean }> {
   try {
     let url = `https://megaeth-testnet.blockscout.com/api/v2/addresses/${address}/transactions`;
 

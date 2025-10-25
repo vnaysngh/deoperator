@@ -39,7 +39,8 @@ const SUPPORTED_CHAIN_IDS = [
   // CHAIN_IDS.BNB,
   // CHAIN_IDS.POLYGON,
   CHAIN_IDS.BASE,
-  CHAIN_IDS.ARBITRUM
+  CHAIN_IDS.ARBITRUM,
+  CHAIN_IDS.MEGAETH_TESTNET
 ]
 
 type TokenCache = Record<number, Record<string, Token>>
@@ -108,6 +109,7 @@ async function fetchTokenLists(): Promise<TokenCache> {
       // polygon: Object.keys(tokens[CHAIN_IDS.POLYGON]).length,
       base: Object.keys(tokens[CHAIN_IDS.BASE]).length,
       arbitrum: Object.keys(tokens[CHAIN_IDS.ARBITRUM]).length,
+      megaeth: Object.keys(tokens[CHAIN_IDS.MEGAETH_TESTNET]).length,
       // bnb: Object.keys(tokens[CHAIN_IDS.BNB]).length
     })
 
@@ -164,6 +166,13 @@ function getFallbackTokens(): TokenCache {
     DAI: new Token(42161, '0xDA10009cBd5D07dd0CeCc66161FC93D7c9000da1', 18, 'DAI', 'Dai Stablecoin'),
     WETH: new Token(42161, '0x82aF49447D8a07e3bd95BD0d56f35241523fBab1', 18, 'WETH', 'Wrapped Ether'),
     ARB: new Token(42161, '0x912CE59144191C1204E64559FE8253a0e49E6548', 18, 'ARB', 'Arbitrum')
+  }
+
+  // MegaETH Testnet - from GTE SDK
+  map[CHAIN_IDS.MEGAETH_TESTNET] = {
+    WETH: new Token(6342, '0x776401b9BC8aAe31A685731B7147D4445fD9FB19', 18, 'WETH', 'Wrapped Ether'),
+    USD: new Token(6342, '0xe9b6e75c243b6100ffcb1c66e8f78f96feea727f', 18, 'USD', 'USD'),
+    USDC: new Token(6342, '0xd11efdcb54d3d262da188d89c31ce69d1c5828fc', 6, 'tkUSDC', 'Test USDC')
   }
 
   return map
