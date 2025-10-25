@@ -15,7 +15,8 @@ import { networks, projectId, wagmiAdapter } from "@/lib/wagmi";
 import {
   arbitrum,
   base,
-  /* bsc, */ mainnet /*, polygon */
+  /* bsc, */ mainnet /*, polygon */,
+  megaethTestnet
 } from "@reown/appkit/networks";
 import { appWalletMetadata } from "@/lib/appMetadata";
 
@@ -46,7 +47,7 @@ function ensureAppKitInstance() {
   const modal = createAppKit({
     adapters: [wagmiAdapter],
     projectId,
-    networks: [base, mainnet, arbitrum],
+    networks: [base, mainnet, arbitrum, megaethTestnet],
     defaultNetwork: networks[0],
     metadata: appWalletMetadata,
     features: {

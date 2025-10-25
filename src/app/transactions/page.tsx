@@ -52,8 +52,23 @@ const getChainName = (chainId: number) => {
     250: "fantom",
     42161: "arbitrum",
     10: "optimism",
+    6342: "megaeth",
   };
   return chainMap[chainId] || "eth";
+};
+
+const getExplorerUrl = (chainId: number, txHash: string) => {
+  const explorerMap: Record<number, string> = {
+    1: `https://etherscan.io/tx/${txHash}`,
+    42161: `https://arbiscan.io/tx/${txHash}`,
+    8453: `https://basescan.org/tx/${txHash}`,
+    10: `https://optimistic.etherscan.io/tx/${txHash}`,
+    137: `https://polygonscan.com/tx/${txHash}`,
+    43114: `https://snowtrace.io/tx/${txHash}`,
+    250: `https://ftmscan.com/tx/${txHash}`,
+    6342: `https://megaeth-testnet.blockscout.com/tx/${txHash}`,
+  };
+  return explorerMap[chainId] || `https://etherscan.io/tx/${txHash}`;
 };
 
 
@@ -382,7 +397,7 @@ export default function TransactionsPage() {
                                     {/* Action */}
                                     <td className="px-4 py-4">
                                       <a
-                                        href={`https://etherscan.io/tx/${tx.hash}`}
+                                        href={getExplorerUrl(chain?.id || 1, tx.hash)}
                                         target="_blank"
                                         rel="noopener noreferrer"
                                         className="text-xs text-primary-400 hover:text-primary-300 flex items-center gap-1"

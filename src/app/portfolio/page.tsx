@@ -20,7 +20,8 @@ import {
 import { ChevronRight } from "lucide-react";
 import type {
   PortfolioSummary,
-  NetworkSummary
+  NetworkSummary,
+  MegaETHPortfolioItem
 } from "@/types/zapper";
 
 interface PortfolioResponse {
@@ -28,6 +29,14 @@ interface PortfolioResponse {
   message?: string;
   address: string;
   summary: PortfolioSummary;
+}
+
+interface MegaETHPortfolioResponse {
+  success: boolean;
+  message?: string;
+  address: string;
+  tokens: MegaETHPortfolioItem[];
+  totalTokens: number;
 }
 
 const fetchPortfolio = async (address: string) => {
@@ -39,6 +48,19 @@ const fetchPortfolio = async (address: string) => {
   }
 
   return response.json() as Promise<PortfolioResponse>;
+};
+
+const fetchMegaETHPortfolio = async (address: string) => {
+  const response = await fetch(`/api/megaeth-portfolio?address=${address}`);
+
+  if (!response.ok) {
+    const errorData = await response.json();
+    throw new Error(
+      errorData.userMessage || "Failed to fetch MegaETH portfolio"
+    );
+  }
+
+  return response.json() as Promise<MegaETHPortfolioResponse>;
 };
 
 const formatUSD = (value: number) => {
@@ -66,7 +88,13 @@ const formatNetworkName = (networkName: string): string => {
     .replace(" MAINNET", "")
     .replace(/_/g, " ")
     .split(" ")
-    .map((word) => word.charAt(0) + word.slice(1).toLowerCase())
+    .map((word) => {
+      // Special case for MegaETH
+      if (word.toUpperCase() === "MEGAETH") {
+        return "MegaETH";
+      }
+      return word.charAt(0) + word.slice(1).toLowerCase();
+    })
     .join(" ");
 };
 
@@ -90,9 +118,43 @@ export default function PortfolioPage() {
     gcTime: 5 * 60 * 1000 // Keep in cache for 5 minutes
   });
 
+  const {
+    data: megaETHData,
+    isLoading: megaETHLoading,
+    error: megaETHError,
+    refetch: refetchMegaETH
+  } = useQuery({
+    queryKey: ["megaeth-portfolio", address],
+    queryFn: () => fetchMegaETHPortfolio(address!),
+    enabled: !!address,
+    staleTime: 60 * 1000, // 1 minute
+    gcTime: 5 * 60 * 1000 // Keep in cache for 5 minutes
+  });
+
   const summary = portfolioData?.summary;
 
   console.log(portfolioData, "portfolio data");
+  console.log(megaETHData, "megaeth data");
+
+  // Create MegaETH network summary if we have data
+  const megaETHNetworkSummary: NetworkSummary | null = megaETHData
+    ? {
+        chainId: 11011, // MegaETH testnet chain ID
+        name: "MEGAETH TESTNET",
+        slug: "megaeth-testnet",
+        tokenBalanceUSD: 0, // No USD values from testnet
+        appBalanceUSD: 0,
+        totalBalanceUSD: 0,
+        tokenCount: megaETHData.totalTokens,
+        appCount: 0
+      }
+    : null;
+
+  // Combine networks with MegaETH
+  const allNetworks = [
+    ...(megaETHNetworkSummary ? [megaETHNetworkSummary] : []),
+    ...(summary?.networkSummaries || [])
+  ];
 
   // Reset drawer when address changes
   useEffect(() => {
@@ -100,18 +162,28 @@ export default function PortfolioPage() {
     setSelectedNetwork(null);
   }, [address]);
 
+  // Check if selected network is MegaETH
+  const isMegaETHSelected = selectedNetwork?.chainId === 11011;
+
   // Get tokens and apps for selected network
   const selectedNetworkTokens = selectedNetwork
-    ? summary?.topTokens.filter(
-        (t) => t.network.chainId === selectedNetwork.chainId
-      ) || []
+    ? isMegaETHSelected
+      ? [] // MegaETH tokens handled separately
+      : summary?.topTokens.filter(
+          (t) => t.network.chainId === selectedNetwork.chainId
+        ) || []
     : [];
 
   const selectedNetworkApps = selectedNetwork
-    ? summary?.topApps.filter(
-        (a) => a.network.chainId === selectedNetwork.chainId
-      ) || []
+    ? isMegaETHSelected
+      ? []
+      : summary?.topApps.filter(
+          (a) => a.network.chainId === selectedNetwork.chainId
+        ) || []
     : [];
+
+  // Get MegaETH tokens if selected
+  const megaETHTokens = isMegaETHSelected ? megaETHData?.tokens || [] : [];
 
   return (
     <SidebarProvider>
@@ -229,14 +301,26 @@ export default function PortfolioPage() {
                           <th className="px-4 py-3 font-medium">
                             Total Balance
                           </th>
-                          <th className="px-4 py-3 font-medium">Tokens</th>
+                          {/* <th className="px-4 py-3 font-medium">Tokens</th> */}
                           <th className="px-4 py-3 font-medium">DeFi</th>
-                          <th className="px-4 py-3 font-medium">Positions</th>
+                          <th className="px-4 py-3 font-medium">Tokens</th>
                           <th className="px-4 py-3 font-medium w-8"></th>
                         </tr>
                       </thead>
                       <tbody>
-                        {summary.networkSummaries.length === 0 ? (
+                        {isLoading || megaETHLoading ? (
+                          <tr>
+                            <td
+                              colSpan={6}
+                              className="px-4 py-8 text-center text-gray-400"
+                            >
+                              <div className="flex items-center justify-center gap-3">
+                                <div className="w-5 h-5 border-2 border-primary-500 border-t-transparent rounded-full animate-spin"></div>
+                                <span>Loading portfolio...</span>
+                              </div>
+                            </td>
+                          </tr>
+                        ) : allNetworks.length === 0 ? (
                           <tr>
                             <td
                               colSpan={6}
@@ -246,7 +330,7 @@ export default function PortfolioPage() {
                             </td>
                           </tr>
                         ) : (
-                          summary.networkSummaries.map((network) => (
+                          allNetworks.map((network) => (
                             <tr
                               key={network.chainId}
                               className="group border-t border-white/5 hover:bg-white/5 transition-colors cursor-pointer"
@@ -256,21 +340,34 @@ export default function PortfolioPage() {
                               }}
                             >
                               <td className="px-4 py-4 align-top">
-                                <div className="text-sm font-medium text-white">
-                                  {formatNetworkName(network.name)}
+                                <div className="flex items-center gap-2">
+                                  <div className="text-sm font-medium text-white">
+                                    {formatNetworkName(network.name)}
+                                  </div>
+                                  {network.chainId === 11011 && (
+                                    <span className="px-2 py-0.5 bg-primary-500/20 border border-primary-500/30 rounded text-[10px] font-medium text-primary-400">
+                                      TESTNET
+                                    </span>
+                                  )}
                                 </div>
                                 <div className="text-xs text-gray-500 mt-1">
                                   Chain ID: {network.chainId}
                                 </div>
                               </td>
                               <td className="px-4 py-4 align-top text-gray-200">
-                                {formatUSD(network.totalBalanceUSD)}
+                                {network.chainId === 11011
+                                  ? "—"
+                                  : formatUSD(network.totalBalanceUSD)}
                               </td>
+                              {/*   <td className="px-4 py-4 align-top text-gray-200">
+                                {network.chainId === 11011
+                                  ? "—"
+                                  : formatUSD(network.tokenBalanceUSD)}
+                              </td> */}
                               <td className="px-4 py-4 align-top text-gray-200">
-                                {formatUSD(network.tokenBalanceUSD)}
-                              </td>
-                              <td className="px-4 py-4 align-top text-gray-200">
-                                {formatUSD(network.appBalanceUSD)}
+                                {network.chainId === 11011
+                                  ? "—"
+                                  : formatUSD(network.appBalanceUSD)}
                               </td>
                               <td className="px-4 py-4 align-top text-gray-300">
                                 {network.tokenCount + network.appCount}
@@ -287,13 +384,20 @@ export default function PortfolioPage() {
 
                   {/* Mobile Card View */}
                   <div className="md:hidden">
-                    {summary.networkSummaries.length === 0 ? (
+                    {isLoading || megaETHLoading ? (
+                      <div className="px-4 py-8 text-center text-gray-400">
+                        <div className="flex items-center justify-center gap-3">
+                          <div className="w-5 h-5 border-2 border-primary-500 border-t-transparent rounded-full animate-spin"></div>
+                          <span>Loading portfolio...</span>
+                        </div>
+                      </div>
+                    ) : allNetworks.length === 0 ? (
                       <div className="px-4 py-12 text-center text-gray-400">
                         No networks with balances found
                       </div>
                     ) : (
                       <div className="divide-y divide-white/5">
-                        {summary.networkSummaries.map((network) => (
+                        {allNetworks.map((network) => (
                           <div
                             key={network.chainId}
                             className="group p-4 hover:bg-white/5 transition-colors cursor-pointer"
@@ -305,8 +409,15 @@ export default function PortfolioPage() {
                             <div className="space-y-3">
                               <div className="flex items-start justify-between gap-2">
                                 <div className="flex-1">
-                                  <div className="text-sm font-medium text-white leading-snug">
-                                    {formatNetworkName(network.name)}
+                                  <div className="flex items-center gap-2">
+                                    <div className="text-sm font-medium text-white leading-snug">
+                                      {formatNetworkName(network.name)}
+                                    </div>
+                                    {network.chainId === 11011 && (
+                                      <span className="px-2 py-0.5 bg-primary-500/20 border border-primary-500/30 rounded text-[10px] font-medium text-primary-400">
+                                        TESTNET
+                                      </span>
+                                    )}
                                   </div>
                                   <div className="text-xs text-gray-500 mt-1">
                                     Chain ID: {network.chainId}
@@ -320,7 +431,9 @@ export default function PortfolioPage() {
                                     Total Balance
                                   </div>
                                   <div className="text-gray-200 font-medium mt-1">
-                                    {formatUSD(network.totalBalanceUSD)}
+                                    {network.chainId === 11011
+                                      ? "—"
+                                      : formatUSD(network.totalBalanceUSD)}
                                   </div>
                                 </div>
                                 <div>
@@ -336,7 +449,9 @@ export default function PortfolioPage() {
                                     Tokens
                                   </div>
                                   <div className="text-gray-200 font-medium mt-1">
-                                    {formatUSD(network.tokenBalanceUSD)}
+                                    {network.chainId === 11011
+                                      ? "—"
+                                      : formatUSD(network.tokenBalanceUSD)}
                                   </div>
                                 </div>
                                 <div>
@@ -344,7 +459,9 @@ export default function PortfolioPage() {
                                     DeFi
                                   </div>
                                   <div className="text-gray-200 font-medium mt-1">
-                                    {formatUSD(network.appBalanceUSD)}
+                                    {network.chainId === 11011
+                                      ? "—"
+                                      : formatUSD(network.appBalanceUSD)}
                                   </div>
                                 </div>
                               </div>
@@ -393,92 +510,163 @@ export default function PortfolioPage() {
                     Network Balance
                   </h3>
                   <div className="mt-3 space-y-3 text-xs sm:text-sm text-gray-200">
-                    <div className="flex items-center justify-between">
-                      <span>Total Balance</span>
-                      <span className="font-medium">
-                        {formatUSD(selectedNetwork.totalBalanceUSD)}
-                      </span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span>Token Balance</span>
-                      <span className="font-medium text-emerald-400">
-                        {formatUSD(selectedNetwork.tokenBalanceUSD)}
-                      </span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span>DeFi Positions</span>
-                      <span className="font-medium text-blue-400">
-                        {formatUSD(selectedNetwork.appBalanceUSD)}
-                      </span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span>Total Positions</span>
-                      <span className="font-medium">
-                        {selectedNetwork.tokenCount + selectedNetwork.appCount}
-                      </span>
-                    </div>
+                    {isMegaETHSelected ? (
+                      <>
+                        <div className="flex items-center justify-between">
+                          <span>Total Tokens</span>
+                          <span className="font-medium">
+                            {selectedNetwork.tokenCount}
+                          </span>
+                        </div>
+                        <div className="px-3 py-2 bg-primary-500/10 border border-primary-500/30 rounded text-[10px] text-primary-400">
+                          ⚠️ Testnet - USD values not available
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <div className="flex items-center justify-between">
+                          <span>Total Balance</span>
+                          <span className="font-medium">
+                            {formatUSD(selectedNetwork.totalBalanceUSD)}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span>Token Balance</span>
+                          <span className="font-medium text-emerald-400">
+                            {formatUSD(selectedNetwork.tokenBalanceUSD)}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span>DeFi Positions</span>
+                          <span className="font-medium text-blue-400">
+                            {formatUSD(selectedNetwork.appBalanceUSD)}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span>Total Positions</span>
+                          <span className="font-medium">
+                            {selectedNetwork.tokenCount +
+                              selectedNetwork.appCount}
+                          </span>
+                        </div>
+                      </>
+                    )}
                   </div>
                 </div>
 
                 {/* Tokens List */}
-                {selectedNetworkTokens.length > 0 && (
-                  <div className="glass border border-white/10 rounded-lg p-3 sm:p-4">
-                    <h3 className="text-xs uppercase tracking-[0.22em] text-gray-400 mb-3">
-                      Tokens ({selectedNetworkTokens.length})
-                    </h3>
-                    <div className="space-y-2">
-                      {selectedNetworkTokens.map((token, index) => (
-                        <div
-                          key={`${token.tokenAddress}-${index}`}
-                          className="flex items-center justify-between p-2 bg-white/5 rounded-lg"
-                        >
-                          <div className="flex items-center gap-2 flex-1 min-w-0">
-                            {token.imgUrlV2 ? (
-                              // eslint-disable-next-line @next/next/no-img-element
-                              <img
-                                src={token.imgUrlV2}
-                                alt={token.symbol}
-                                className="w-8 h-8 rounded-full"
-                                onError={(e) => {
-                                  (e.target as HTMLImageElement).style.display =
-                                    "none";
-                                }}
-                              />
-                            ) : (
-                              <div className="w-8 h-8 rounded-full bg-gradient-to-br from-primary-500 to-primary-600 flex items-center justify-center text-[10px] font-bold">
-                                {token.symbol.slice(0, 2)}
-                              </div>
-                            )}
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-1">
-                                <span className="font-semibold text-white text-xs">
-                                  {token.symbol}
-                                </span>
-                                {token.verified && (
-                                  <span className="text-blue-400 text-[10px]">
-                                    ✓
-                                  </span>
+                {isMegaETHSelected
+                  ? megaETHTokens.length > 0 && (
+                      <div className="glass border border-white/10 rounded-lg p-3 sm:p-4">
+                        <h3 className="text-xs uppercase tracking-[0.22em] text-gray-400 mb-3">
+                          Tokens ({megaETHTokens.length})
+                        </h3>
+                        <div className="space-y-2">
+                          {megaETHTokens.map((token, index) => (
+                            <div
+                              key={`${token.tokenAddress}-${index}`}
+                              className="flex items-center justify-between p-2 bg-white/5 rounded-lg"
+                            >
+                              <div className="flex items-center gap-2 flex-1 min-w-0">
+                                {token.imgUrl ? (
+                                  // eslint-disable-next-line @next/next/no-img-element
+                                  <img
+                                    src={token.imgUrl}
+                                    alt={token.symbol}
+                                    className="w-8 h-8 rounded-full"
+                                    onError={(e) => {
+                                      (
+                                        e.target as HTMLImageElement
+                                      ).style.display = "none";
+                                    }}
+                                  />
+                                ) : (
+                                  <div className="w-8 h-8 rounded-full bg-gradient-to-br from-primary-500 to-primary-600 flex items-center justify-center text-[10px] font-bold">
+                                    {token.symbol.slice(0, 2)}
+                                  </div>
                                 )}
-                              </div>
-                              <div className="text-[10px] text-gray-400 truncate">
-                                {formatTokenAmount(
-                                  token.balance,
-                                  token.decimals
-                                )}{" "}
-                                {token.symbol}
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center gap-1">
+                                    <span className="font-semibold text-white text-xs">
+                                      {token.symbol}
+                                    </span>
+                                  </div>
+                                  <div className="text-[10px] text-gray-400 truncate">
+                                    {formatTokenAmount(
+                                      token.balance,
+                                      token.decimals
+                                    )}{" "}
+                                    {token.symbol}
+                                  </div>
+                                  <div className="text-[10px] text-gray-500 truncate mt-0.5">
+                                    {token.name}
+                                  </div>
+                                </div>
                               </div>
                             </div>
-                          </div>
-                          <div className="text-right">
-                            <div className="font-medium text-white text-xs">
-                              {formatUSD(token.balanceUSD)}
-                            </div>
-                          </div>
+                          ))}
                         </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
+                      </div>
+                    )
+                  : selectedNetworkTokens.length > 0 && (
+                      <div className="glass border border-white/10 rounded-lg p-3 sm:p-4">
+                        <h3 className="text-xs uppercase tracking-[0.22em] text-gray-400 mb-3">
+                          Tokens ({selectedNetworkTokens.length})
+                        </h3>
+                        <div className="space-y-2">
+                          {selectedNetworkTokens.map((token, index) => (
+                            <div
+                              key={`${token.tokenAddress}-${index}`}
+                              className="flex items-center justify-between p-2 bg-white/5 rounded-lg"
+                            >
+                              <div className="flex items-center gap-2 flex-1 min-w-0">
+                                {token.imgUrlV2 ? (
+                                  // eslint-disable-next-line @next/next/no-img-element
+                                  <img
+                                    src={token.imgUrlV2}
+                                    alt={token.symbol}
+                                    className="w-8 h-8 rounded-full"
+                                    onError={(e) => {
+                                      (
+                                        e.target as HTMLImageElement
+                                      ).style.display = "none";
+                                    }}
+                                  />
+                                ) : (
+                                  <div className="w-8 h-8 rounded-full bg-gradient-to-br from-primary-500 to-primary-600 flex items-center justify-center text-[10px] font-bold">
+                                    {token.symbol.slice(0, 2)}
+                                  </div>
+                                )}
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center gap-1">
+                                    <span className="font-semibold text-white text-xs">
+                                      {token.symbol}
+                                    </span>
+                                    {token.verified && (
+                                      <span className="text-blue-400 text-[10px]">
+                                        ✓
+                                      </span>
+                                    )}
+                                  </div>
+                                  <div className="text-[10px] text-gray-400 truncate">
+                                    {formatTokenAmount(
+                                      token.balance,
+                                      token.decimals
+                                    )}{" "}
+                                    {token.symbol}
+                                  </div>
+                                </div>
+                              </div>
+                              <div className="text-right">
+                                <div className="font-medium text-white text-xs">
+                                  {formatUSD(token.balanceUSD)}
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
 
                 {/* DeFi Positions List */}
                 {selectedNetworkApps.length > 0 && (
@@ -531,15 +719,17 @@ export default function PortfolioPage() {
                 )}
 
                 {/* Empty State */}
-                {selectedNetworkTokens.length === 0 &&
-                  selectedNetworkApps.length === 0 && (
-                    <div className="text-center py-8 glass border border-white/10 rounded-lg">
-                      <div className="text-4xl mb-2">🔍</div>
-                      <p className="text-xs text-gray-400">
-                        No assets found on this network
-                      </p>
-                    </div>
-                  )}
+                {(isMegaETHSelected
+                  ? megaETHTokens.length === 0
+                  : selectedNetworkTokens.length === 0 &&
+                    selectedNetworkApps.length === 0) && (
+                  <div className="text-center py-8 glass border border-white/10 rounded-lg">
+                    <div className="text-4xl mb-2">🔍</div>
+                    <p className="text-xs text-gray-400">
+                      No assets found on this network
+                    </p>
+                  </div>
+                )}
               </div>
             </>
           )}

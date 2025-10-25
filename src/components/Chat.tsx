@@ -430,6 +430,19 @@ export function Chat({ sessionId }: ChatProps) {
                 >
                   Bridge 250 USDC from Arbitrum to Base
                 </button>
+                <button
+                  onClick={() => {
+                    if (address) {
+                      sendMessage({
+                        text: "What's the price of ETH on MegaETH?"
+                      });
+                    }
+                  }}
+                  disabled={!address}
+                  className="w-full glass rounded-lg px-3 sm:px-4 py-2 text-gray-300 hover:bg-white/10 transition-colors cursor-pointer text-left disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  What&apos;s the price of ETH on MegaETH?
+                </button>
               </div>
             </div>
           )}

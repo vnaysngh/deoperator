@@ -182,7 +182,9 @@ export interface ActivityTimelineEventDelta {
   fungibleDeltas: FungibleDelta[];
 }
 
-export type TransactionHistoryEntry = TimelineEventV2 | ActivityTimelineEventDelta;
+export type TransactionHistoryEntry =
+  | TimelineEventV2
+  | ActivityTimelineEventDelta;
 
 export interface TransactionHistoryV2 {
   edges: Array<{
@@ -208,13 +210,13 @@ export interface TransactionDetailsV2Response {
 export function isTimelineEventV2(
   entry: TransactionHistoryEntry
 ): entry is TimelineEventV2 {
-  return 'hash' in entry && 'eventHash' in entry;
+  return "hash" in entry && "eventHash" in entry;
 }
 
 export function isActivityTimelineEventDelta(
   entry: TransactionHistoryEntry
 ): entry is ActivityTimelineEventDelta {
-  return 'transactionHash' in entry && 'fungibleDeltas' in entry;
+  return "transactionHash" in entry && "fungibleDeltas" in entry;
 }
 
 // Portfolio Summary Types for easier consumption
@@ -237,4 +239,43 @@ export interface PortfolioSummary {
   networkSummaries: NetworkSummary[];
   topTokens: TokenBalance[];
   topApps: AppBalance[];
+}
+
+// MegaETH Testnet Types
+
+export interface MegaETHToken {
+  address_hash: string;
+  circulating_market_cap: string | null;
+  decimals: string;
+  exchange_rate: string | null;
+  holders_count: string;
+  icon_url: string | null;
+  name: string;
+  reputation: string;
+  symbol: string;
+  total_supply: string;
+  type: string;
+  volume_24h: string | null;
+}
+
+export interface MegaETHTokenBalance {
+  token: MegaETHToken;
+  token_id: null;
+  token_instance: null;
+  value: string;
+}
+
+export interface MegaETHTokensResponse {
+  items: MegaETHTokenBalance[];
+  next_page_params: null | Record<string, unknown>;
+}
+
+export interface MegaETHPortfolioItem {
+  tokenAddress: string;
+  name: string;
+  symbol: string;
+  decimals: number;
+  balance: number;
+  balanceRaw: string;
+  imgUrl: string | null;
 }

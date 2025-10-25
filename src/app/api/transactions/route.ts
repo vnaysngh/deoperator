@@ -18,7 +18,105 @@ const CHAIN_NAME_TO_ID: Record<string, number> = {
   avalanche: 43114,
   bsc: 56,
   fantom: 250,
+  megaeth: 6342,
 };
+
+/**
+ * Blockscout Transaction Response Type
+ */
+interface BlockscoutTransaction {
+  hash: string;
+  nonce: number;
+  from: {
+    hash: string;
+    name?: string | null;
+  };
+  to: {
+    hash: string;
+    name?: string | null;
+  } | null;
+  value: string;
+  gas_used: string;
+  gas_limit: string;
+  gas_price: string;
+  fee: {
+    type: string;
+    value: string;
+  };
+  status: string;
+  timestamp: string;
+  block_number: number;
+  method?: string | null;
+  result?: string;
+}
+
+interface BlockscoutResponse {
+  items: BlockscoutTransaction[];
+  next_page_params: {
+    block_number: number;
+    index: number;
+  } | null;
+}
+
+/**
+ * Fetch transactions from Blockscout API for MegaETH testnet
+ */
+async function fetchBlockscoutTransactions(
+  address: string,
+  cursor?: string
+): Promise<{ transactions: any[]; cursor: string | null; hasNextPage: boolean }> {
+  try {
+    let url = `https://megaeth-testnet.blockscout.com/api/v2/addresses/${address}/transactions`;
+
+    // Add pagination params if cursor exists
+    if (cursor) {
+      const cursorData = JSON.parse(cursor);
+      url += `?block_number=${cursorData.block_number}&index=${cursorData.index}`;
+    }
+
+    const response = await fetch(url, {
+      headers: {
+        'Accept': 'application/json',
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error(`Blockscout API returned ${response.status}`);
+    }
+
+    const data: BlockscoutResponse = await response.json();
+
+    // Transform Blockscout transactions to match Zapper format
+    const transactions = data.items.map((tx) => ({
+      hash: tx.hash,
+      network: "MegaETH Testnet",
+      timestamp: new Date(tx.timestamp).getTime(), // Convert to milliseconds timestamp
+      from: tx.from.hash,
+      fromLabel: tx.from.name || null,
+      to: tx.to?.hash || null,
+      toLabel: tx.to?.name || null,
+      value: tx.value,
+      description: tx.method || null,
+      tokenDeltas: [],
+      fungibleDeltas: [],
+      type: "timeline",
+    }));
+
+    // Prepare next cursor
+    const nextCursor = data.next_page_params
+      ? JSON.stringify(data.next_page_params)
+      : null;
+
+    return {
+      transactions,
+      cursor: nextCursor,
+      hasNextPage: !!data.next_page_params,
+    };
+  } catch (error) {
+    console.error("[BLOCKSCOUT API] Error fetching transactions:", error);
+    throw error;
+  }
+}
 
 /**
  * GET /api/transactions
@@ -72,6 +170,38 @@ export async function GET(req: NextRequest) {
       ? (perspectiveParam as "Signer" | "Receiver" | "All")
       : "Signer";
 
+    console.log("[TRANSACTIONS API] Fetching transactions for:", walletAddress, "chainId:", chainId);
+
+    // Check if this is MegaETH testnet (chain ID 6342)
+    if (chainId === 6342) {
+      console.log("[TRANSACTIONS API] Using Blockscout API for MegaETH testnet");
+
+      try {
+        const result = await fetchBlockscoutTransactions(walletAddress, cursor || undefined);
+
+        return NextResponse.json({
+          success: true,
+          message: "Transactions fetched successfully from Blockscout",
+          transactions: result.transactions,
+          cursor: result.cursor,
+          hasNextPage: result.hasNextPage,
+          totalCount: result.transactions.length,
+          walletAddress,
+          chainId,
+        });
+      } catch (error) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: error instanceof Error ? error.message : "Unknown error",
+            userMessage: "Failed to fetch MegaETH transactions. Please try again.",
+          },
+          { status: 500 }
+        );
+      }
+    }
+
+    // Use Zapper API for other chains
     console.log("[ZAPPER API] Fetching transactions for:", walletAddress, "chainId:", chainId);
 
     // Build filters

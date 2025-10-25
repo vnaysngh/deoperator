@@ -84,8 +84,8 @@ const menuItems = [
 ];
 
 const secondaryItems = [
-  { title: "Portfolio", icon: Wallet, url: "/portfolio" },
-  { title: "Transactions", icon: Clock, url: "/transactions" }
+  { title: "Portfolio", icon: Wallet, url: "/portfolio" }
+  // { title: "Transactions", icon: Clock, url: "/transactions" }
 ];
 
 const formatRelativeTime = (input: string) => {
