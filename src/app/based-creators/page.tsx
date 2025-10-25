@@ -163,6 +163,7 @@ export default function BasedCreatorsPage() {
   const [minMarketCap, setMinMarketCap] = useState<number | undefined>(
     undefined
   );
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [new24h, setNew24h] = useState(false);
   const [currentCursor, setCurrentCursor] = useState<string | undefined>(
     undefined

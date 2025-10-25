@@ -5,7 +5,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { DefaultChatTransport } from "ai";
 import { useAccount, usePublicClient, useWalletClient } from "wagmi";
 import type { SerializedBridgeQuote } from "@/lib/across-client";
-import { formatUnits } from "viem";
 import { useRouter, usePathname } from "next/navigation";
 import { CopyIcon, CheckIcon } from "./chat/icons";
 import type { MorphoStakingOption } from "./chat/MorphoStakingCard";
@@ -16,6 +15,7 @@ import { EntireBalanceQuoteDisplay } from "./chat/EntireBalanceQuoteDisplay";
 import { OrderSubmit } from "./chat/OrderSubmit";
 
 // Global ref to track the latest quote timestamp and listeners
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 let latestQuoteTimestamp = 0;
 const quoteListeners = new Set<() => void>();
 
