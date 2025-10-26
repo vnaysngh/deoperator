@@ -161,7 +161,7 @@ export function QuoteDisplay({
           return Number(normalized).toFixed(6);
         };
 
-        const slippagePercent = ((gteQuote.slippageBps || 50) / 100).toFixed(2);
+        const slippagePercent = ((gteQuote.slippageBps || 500) / 100).toFixed(2);
 
         // Build quote object with flat structure for UI
         const formattedQuote = {

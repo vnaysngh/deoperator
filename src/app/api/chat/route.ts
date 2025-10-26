@@ -50,6 +50,28 @@ type ToolErrorResult<
   userMessage: string;
 };
 
+// GTE Portfolio types
+interface GtePortfolioToken {
+  balance: string;
+  balanceUsd: string | number;  // SDK returns string, we convert to number
+  token?: {
+    symbol?: string | null;
+    name?: string | null;
+    priceUsd?: number | string | null;
+    logoUri?: string | null;
+  } | null;
+}
+
+interface GtePortfolioBalance {
+  symbol: string;
+  name: string;
+  balance: string;
+  usdValue: number;
+  usdPrice?: number;
+  logoUri?: string;
+  formatted: string;
+}
+
 function toolSuccess<T extends ToolSuccessResult>(result: T): T {
   return result;
 }
@@ -650,6 +672,9 @@ export async function POST(req: Request) {
                   const isNativeETH = fromUpper === "ETH";
 
                   // Return token info for client-side SDK to use
+                  // IMPORTANT: For MegaETH GTE SDK, always use the WETH address for quoting (even for ETH)
+                  // The SDK needs the real WETH contract address to query Uniswap V2 for liquidity
+                  // The isNativeCurrency flag will tell the swap to use native ETH for the transaction
                   return toolSuccess({
                     success: true,
                     chain: chainName,
@@ -657,7 +682,7 @@ export async function POST(req: Request) {
                     fromToken: fromTokenInfo.symbol,
                     toToken: toTokenInfo.symbol,
                     amount,
-                    fromTokenAddress: isNativeETH ? NATIVE_CURRENCY_ADDRESS : fromTokenInfo.address,
+                    fromTokenAddress: fromTokenInfo.address, // Always use the real token address (WETH for ETH)
                     fromTokenDecimals: fromTokenInfo.decimals,
                     toTokenAddress: toTokenInfo.address,
                     toTokenDecimals: toTokenInfo.decimals,
@@ -1875,7 +1900,7 @@ export async function POST(req: Request) {
                 const sdk = getGteSdk();
 
                 // Fetch portfolio from GTE SDK
-                const portfolio = await sdk.getUserPortfolio(walletAddress);
+                const portfolio = await sdk.getUserPortfolio(walletAddress as Address);
 
                 console.log(
                   "[TOOL:getWalletBalances] GTE portfolio received:",
@@ -1884,26 +1909,37 @@ export async function POST(req: Request) {
 
                 // Transform GTE portfolio to our format
                 const balances = (portfolio.tokens || [])
-                  .filter((item: any) => {
+                  .filter((item: GtePortfolioToken) => {
                     // Apply minUsdValue filter
-                    if (minUsdValue && item.balanceUsd < minUsdValue) {
+                    const usdValue = typeof item.balanceUsd === 'string' ? parseFloat(item.balanceUsd) : item.balanceUsd;
+                    if (minUsdValue && usdValue < minUsdValue) {
                       return false;
                     }
                     // Filter out zero balances
                     return parseFloat(item.balance) > 0;
                   })
                   .slice(0, maxResults)
-                  .map((item: any) => ({
-                    symbol: item.token?.symbol || "UNKNOWN",
-                    name: item.token?.name || item.token?.symbol || "Unknown Token",
-                    balance: item.balance,
-                    usdValue: item.balanceUsd,
-                    usdPrice: item.token?.priceUsd,
-                    logoUri: item.token?.logoUri,
-                    formatted: item.balanceUsd
-                      ? `${parseFloat(item.balance).toFixed(6)} ${item.token?.symbol} ($${item.balanceUsd.toFixed(2)})`
-                      : `${parseFloat(item.balance).toFixed(6)} ${item.token?.symbol}`
-                  }));
+                  .map((item: GtePortfolioToken): GtePortfolioBalance => {
+                    const usdValue = typeof item.balanceUsd === 'string' ? parseFloat(item.balanceUsd) : item.balanceUsd;
+                    const priceUsd = item.token?.priceUsd;
+                    const usdPrice = priceUsd === null || priceUsd === undefined
+                      ? undefined
+                      : typeof priceUsd === 'string'
+                      ? parseFloat(priceUsd)
+                      : priceUsd;
+
+                    return {
+                      symbol: item.token?.symbol || "UNKNOWN",
+                      name: item.token?.name || item.token?.symbol || "Unknown Token",
+                      balance: item.balance,
+                      usdValue,
+                      usdPrice,
+                      logoUri: item.token?.logoUri || undefined,
+                      formatted: usdValue
+                        ? `${parseFloat(item.balance).toFixed(6)} ${item.token?.symbol} ($${usdValue.toFixed(2)})`
+                        : `${parseFloat(item.balance).toFixed(6)} ${item.token?.symbol}`
+                    };
+                  });
 
                 if (balances.length === 0) {
                   return toolError({
@@ -1915,12 +1951,12 @@ export async function POST(req: Request) {
                   });
                 }
 
-                const totalValue =
-                  portfolio.totalUsdBalance ||
+                const rawTotalValue = portfolio.totalUsdBalance ||
                   balances.reduce(
-                    (sum: number, b: any) => sum + (b.usdValue || 0),
+                    (sum: number, b: GtePortfolioBalance) => sum + (b.usdValue || 0),
                     0
                   );
+                const totalValue = typeof rawTotalValue === 'string' ? parseFloat(rawTotalValue) : rawTotalValue;
 
                 return toolSuccess({
                   success: true,
@@ -2538,15 +2574,14 @@ export async function POST(req: Request) {
                   const isNativeETH = fromUpper === "ETH";
 
                   // Return token info for client-side SDK to use
+                  // IMPORTANT: For MegaETH GTE SDK, always use the WETH address for quoting (even for ETH)
                   return toolSuccess({
                     success: true,
                     chain: chainName,
                     chainId,
                     fromToken: fromTokenInfo.symbol,
                     toToken: toTokenInfo.symbol,
-                    fromTokenAddress: isNativeETH
-                      ? NATIVE_CURRENCY_ADDRESS
-                      : fromTokenInfo.address,
+                    fromTokenAddress: fromTokenInfo.address, // Always use the real token address (WETH for ETH)
                     fromTokenDecimals: fromTokenInfo.decimals,
                     toTokenAddress: toTokenInfo.address,
                     toTokenDecimals: toTokenInfo.decimals,

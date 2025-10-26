@@ -4519,9 +4519,10 @@ graphql-request@^6.1.0:
   resolved "https://registry.npmjs.org/graphql/-/graphql-16.11.0.tgz"
   integrity sha512-mS1lbMsxgQj6hge1XZ6p7GPhbrtFwUFYi3wRzXAC/FmYnyXMTvvI3td3rjmQ2u8ewXueaSvRPWaEcgVVOT9Jnw==
 
-"gte-typescript-sdk@github:vnaysngh/gte-typescript-sdk":
+gte-typescript-sdk@^0.1.0:
   version "0.1.0"
-  resolved "git+ssh://git@github.com/vnaysngh/gte-typescript-sdk.git#e776660e7a6fa28bc111043163da3775893ff03a"
+  resolved "https://registry.npmjs.org/gte-typescript-sdk/-/gte-typescript-sdk-0.1.0.tgz"
+  integrity sha512-zdNUz7K2KNSTELsytWY1m3pwGs4E/CUd6QAqc6KLGFSgWexdf94RkSAWwKBwle8sAYUaz31+oMOe6QjK6iqEQA==
   dependencies:
     viem "^2.7.10"
 

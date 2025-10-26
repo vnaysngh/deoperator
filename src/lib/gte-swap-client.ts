@@ -86,7 +86,7 @@ export async function getGteSwapQuote(
     tokenIn,
     tokenOut,
     amountIn: params.sellAmount,
-    slippageBps: params.slippageBps || 50 // 0.5% default
+    slippageBps: params.slippageBps || 500 // 5% default
   });
 
   console.log("[GTE CLIENT] Quote received:", quote);
