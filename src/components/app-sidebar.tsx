@@ -27,6 +27,7 @@ import {
   // HelpCircle
 } from "lucide-react";
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
 import { useAccount } from "wagmi";
 import { useCallback, useEffect, useState } from "react";
@@ -246,22 +247,14 @@ export function AppSidebar() {
       <SidebarHeader className="border-b border-white/5">
         <SidebarMenu>
           <SidebarMenuItem>
-            <SidebarMenuButton
-              size="lg"
-              className="hover:bg-white/5"
-              style={{ gap: "0 rem" }}
-            >
-              <div className="flex h-10 w-10 flex-col items-start justify-center gap-1 px-1.5">
-                <span className="text-[10px] font-semibold uppercase tracking-[0.32em] text-primary-400">
-                  DE
-                </span>
-                <span className="flex items-center gap-1 text-[9px] font-medium tracking-[0.22em] text-white/80">
-                  <span className="text-primary-400/80 font-mono text-[11px] leading-none">
-                    ›
-                  </span>
-                  OP
-                </span>
-              </div>
+            <SidebarMenuButton size="lg" className="hover:bg-white/5">
+              <Image
+                src="/images/logo.png"
+                alt="DeOperator Logo"
+                width={40}
+                height={40}
+                className="rounded-md"
+              />
               <div className="flex flex-col gap-0.5 leading-none">
                 <span className="font-bold gradient-text">DeOperator</span>
                 <span className="text-xs text-gray-500">Trading Terminal</span>

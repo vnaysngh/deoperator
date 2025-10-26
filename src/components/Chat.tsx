@@ -363,9 +363,9 @@ export function Chat({ sessionId }: ChatProps) {
               <h3 className="text-base sm:text-lg font-semibold text-white mb-2">
                 Start Trading
               </h3>
-              <p className="text-xs sm:text-sm text-gray-400 mb-4 sm:mb-6 max-w-sm px-4 sm:px-0">
+              {/* <p className="text-xs sm:text-sm text-gray-400 mb-4 sm:mb-6 max-w-sm px-4 sm:px-0">
                 Ask me anything about trading. Here are some examples:
-              </p>
+              </p> */}
               <div className="space-y-2 text-xs sm:text-sm text-left max-w-md w-full px-2">
                 <button
                   onClick={() => {
@@ -390,32 +390,6 @@ export function Chat({ sessionId }: ChatProps) {
                   className="w-full glass rounded-lg px-3 sm:px-4 py-2 text-gray-300 hover:bg-white/10 transition-colors cursor-pointer text-left disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   Get me a quote for 100 USDC to DAI on Arbitrum
-                </button>
-                <button
-                  onClick={() => {
-                    if (address) {
-                      sendMessage({
-                        text: "Show me the best rate for 0.5 ETH to USDT"
-                      });
-                    }
-                  }}
-                  disabled={!address}
-                  className="w-full glass rounded-lg px-3 sm:px-4 py-2 text-gray-300 hover:bg-white/10 transition-colors cursor-pointer text-left disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  Show me the best rate for 0.5 ETH to USDT
-                </button>
-                <button
-                  onClick={() => {
-                    if (address) {
-                      sendMessage({
-                        text: "What are the staking options for USDC on Base?"
-                      });
-                    }
-                  }}
-                  disabled={!address}
-                  className="w-full glass rounded-lg px-3 sm:px-4 py-2 text-gray-300 hover:bg-white/10 transition-colors cursor-pointer text-left disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  What are the staking options for USDC on Base?
                 </button>
                 <button
                   onClick={() => {
@@ -601,18 +575,28 @@ export function Chat({ sessionId }: ChatProps) {
                                                 alt={bal.symbol}
                                                 className="w-8 h-8 rounded-full"
                                                 onError={(e) => {
-                                                  const target = e.target as HTMLImageElement;
-                                                  target.style.display = 'none';
-                                                  const placeholder = target.nextElementSibling as HTMLElement;
-                                                  if (placeholder) placeholder.style.display = 'flex';
+                                                  const target =
+                                                    e.target as HTMLImageElement;
+                                                  target.style.display = "none";
+                                                  const placeholder =
+                                                    target.nextElementSibling as HTMLElement;
+                                                  if (placeholder)
+                                                    placeholder.style.display =
+                                                      "flex";
                                                 }}
                                               />
                                             ) : null}
                                             <div
                                               className="w-8 h-8 rounded-full bg-gradient-to-br from-primary-500 to-primary-600 flex items-center justify-center text-white text-xs font-bold"
-                                              style={{ display: bal.logoUri ? 'none' : 'flex' }}
+                                              style={{
+                                                display: bal.logoUri
+                                                  ? "none"
+                                                  : "flex"
+                                              }}
                                             >
-                                              {bal.symbol.charAt(0).toUpperCase()}
+                                              {bal.symbol
+                                                .charAt(0)
+                                                .toUpperCase()}
                                             </div>
                                             <div>
                                               <div className="text-sm font-semibold text-white">
