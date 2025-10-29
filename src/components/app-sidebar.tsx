@@ -9,7 +9,8 @@ import {
   SidebarHeader,
   SidebarMenu,
   SidebarMenuButton,
-  SidebarMenuItem
+  SidebarMenuItem,
+  SidebarFooter
 } from "@/components/ui/sidebar";
 import {
   ArrowLeftRight,
@@ -19,7 +20,9 @@ import {
   ChevronDown,
   Trash2,
   Activity,
-  Coins
+  Coins,
+  Twitter,
+  Send
   // TrendingUp,
   // History,
   // Shield,
@@ -458,23 +461,30 @@ export function AppSidebar() {
         </AlertDialogContent>
       </AlertDialog>
 
-      {/*  <SidebarFooter className="border-t border-white/5">
-        <SidebarMenu>
-          <SidebarMenuItem>
-            <SidebarMenuButton className="hover:bg-white/5">
-              <div className="w-8 h-8 rounded-full bg-gradient-to-br from-primary-600/20 to-primary-700/20 flex items-center justify-center border border-primary-500/30">
-                <span className="text-primary-400 font-semibold text-sm">
-                  V
-                </span>
-              </div>
-              <div className="flex flex-col gap-0.5 leading-none">
-                <span className="text-sm font-medium">Vinay</span>
-                <span className="text-xs text-gray-500">0x1234...5678</span>
-              </div>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-        </SidebarMenu>
-      </SidebarFooter> */}
+      <SidebarFooter className="border-t border-white/5">
+        <div className="px-4 py-2">
+          <div className="flex items-center justify-center gap-3">
+            <a
+              href="https://x.com/deopdotfun"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center justify-center w-8 h-8 rounded-lg bg-white/5 text-gray-400 hover:bg-[#7fffd41a] hover:text-[#7fffd4] transition-all duration-200 group"
+              aria-label="Follow us on Twitter"
+            >
+              <Twitter className="w-4 h-4 group-hover:scale-110 transition-transform" />
+            </a>
+            <a
+              href="https://t.me/+e2QdhRweac1kYjc9"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center justify-center w-8 h-8 rounded-lg bg-white/5 text-gray-400 hover:bg-[#7fffd41a] hover:text-[#7fffd4] transition-all duration-200 group"
+              aria-label="Join us on Telegram"
+            >
+              <Send className="w-4 h-4 group-hover:scale-110 transition-transform" />
+            </a>
+          </div>
+        </div>
+      </SidebarFooter>
     </Sidebar>
   );
 }
