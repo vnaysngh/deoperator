@@ -5,7 +5,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { DefaultChatTransport } from "ai";
 import { useAccount, usePublicClient, useWalletClient } from "wagmi";
 import type { SerializedBridgeQuote } from "@/lib/across-client";
-import { formatUnits } from "viem";
 import { useRouter, usePathname } from "next/navigation";
 import { CopyIcon, CheckIcon } from "./chat/icons";
 import type { MorphoStakingOption } from "./chat/MorphoStakingCard";
@@ -16,6 +15,7 @@ import { EntireBalanceQuoteDisplay } from "./chat/EntireBalanceQuoteDisplay";
 import { OrderSubmit } from "./chat/OrderSubmit";
 
 // Global ref to track the latest quote timestamp and listeners
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 let latestQuoteTimestamp = 0;
 const quoteListeners = new Set<() => void>();
 
@@ -363,9 +363,9 @@ export function Chat({ sessionId }: ChatProps) {
               <h3 className="text-base sm:text-lg font-semibold text-white mb-2">
                 Start Trading
               </h3>
-              <p className="text-xs sm:text-sm text-gray-400 mb-4 sm:mb-6 max-w-sm px-4 sm:px-0">
+              {/* <p className="text-xs sm:text-sm text-gray-400 mb-4 sm:mb-6 max-w-sm px-4 sm:px-0">
                 Ask me anything about trading. Here are some examples:
-              </p>
+              </p> */}
               <div className="space-y-2 text-xs sm:text-sm text-left max-w-md w-full px-2">
                 <button
                   onClick={() => {
@@ -395,32 +395,6 @@ export function Chat({ sessionId }: ChatProps) {
                   onClick={() => {
                     if (address) {
                       sendMessage({
-                        text: "Show me the best rate for 0.5 ETH to USDT"
-                      });
-                    }
-                  }}
-                  disabled={!address}
-                  className="w-full glass rounded-lg px-3 sm:px-4 py-2 text-gray-300 hover:bg-white/10 transition-colors cursor-pointer text-left disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  Show me the best rate for 0.5 ETH to USDT
-                </button>
-                <button
-                  onClick={() => {
-                    if (address) {
-                      sendMessage({
-                        text: "What are the staking options for USDC on Base?"
-                      });
-                    }
-                  }}
-                  disabled={!address}
-                  className="w-full glass rounded-lg px-3 sm:px-4 py-2 text-gray-300 hover:bg-white/10 transition-colors cursor-pointer text-left disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  What are the staking options for USDC on Base?
-                </button>
-                <button
-                  onClick={() => {
-                    if (address) {
-                      sendMessage({
                         text: "Bridge 250 USDC from Arbitrum to Base"
                       });
                     }
@@ -429,6 +403,19 @@ export function Chat({ sessionId }: ChatProps) {
                   className="w-full glass rounded-lg px-3 sm:px-4 py-2 text-gray-300 hover:bg-white/10 transition-colors cursor-pointer text-left disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   Bridge 250 USDC from Arbitrum to Base
+                </button>
+                <button
+                  onClick={() => {
+                    if (address) {
+                      sendMessage({
+                        text: "What's the price of ETH to USD on MegaETH?"
+                      });
+                    }
+                  }}
+                  disabled={!address}
+                  className="w-full glass rounded-lg px-3 sm:px-4 py-2 text-gray-300 hover:bg-white/10 transition-colors cursor-pointer text-left disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  What&apos;s the price of ETH to USD on MegaETH?
                 </button>
               </div>
             </div>
@@ -573,6 +560,7 @@ export function Chat({ sessionId }: ChatProps) {
                                           name: string;
                                           balance: string;
                                           usdValue?: number;
+                                          logoUri?: string;
                                         },
                                         i: number
                                       ) => (
@@ -580,12 +568,43 @@ export function Chat({ sessionId }: ChatProps) {
                                           key={i}
                                           className="flex items-center justify-between p-2 rounded-lg bg-white/5 hover:bg-white/10 transition-colors"
                                         >
-                                          <div className="flex-1">
-                                            <div className="text-sm font-semibold text-white">
-                                              {bal.symbol}
+                                          <div className="flex items-center gap-3 flex-1">
+                                            {bal.logoUri ? (
+                                              <img
+                                                src={bal.logoUri}
+                                                alt={bal.symbol}
+                                                className="w-8 h-8 rounded-full"
+                                                onError={(e) => {
+                                                  const target =
+                                                    e.target as HTMLImageElement;
+                                                  target.style.display = "none";
+                                                  const placeholder =
+                                                    target.nextElementSibling as HTMLElement;
+                                                  if (placeholder)
+                                                    placeholder.style.display =
+                                                      "flex";
+                                                }}
+                                              />
+                                            ) : null}
+                                            <div
+                                              className="w-8 h-8 rounded-full bg-gradient-to-br from-primary-500 to-primary-600 flex items-center justify-center text-white text-xs font-bold"
+                                              style={{
+                                                display: bal.logoUri
+                                                  ? "none"
+                                                  : "flex"
+                                              }}
+                                            >
+                                              {bal.symbol
+                                                .charAt(0)
+                                                .toUpperCase()}
                                             </div>
-                                            <div className="text-xs text-gray-400">
-                                              {bal.name}
+                                            <div>
+                                              <div className="text-sm font-semibold text-white">
+                                                {bal.symbol}
+                                              </div>
+                                              <div className="text-xs text-gray-400">
+                                                {bal.name}
+                                              </div>
                                             </div>
                                           </div>
                                           <div className="text-right">

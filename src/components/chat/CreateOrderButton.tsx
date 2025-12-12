@@ -97,17 +97,31 @@ export function CreateOrderButton({
       }
 
       try {
-        const allowance = await getCowProtocolAllowance(
-          publicClient,
-          walletClient,
-          {
-            tokenAddress: tokenInfo.fromTokenAddress as Address,
-            owner: address,
-            chainId: tokenInfo.chainId
-          }
-        );
+        const isMegaEth = tokenInfo.chainId === 6342;
 
-        setIsApproved(allowance >= requiredAmount);
+        if (isMegaEth) {
+          // Use GTE SDK for MegaETH
+          const { getGteAllowance } = await import("@/lib/gte-swap-client");
+          const allowance = await getGteAllowance({
+            tokenAddress: tokenInfo.fromTokenAddress as Address,
+            userAddress: address,
+            publicClient
+          });
+          setIsApproved(allowance >= requiredAmount);
+        } else {
+          // Use CoW Protocol for other chains
+          const allowance = await getCowProtocolAllowance(
+            publicClient,
+            walletClient,
+            {
+              tokenAddress: tokenInfo.fromTokenAddress as Address,
+              owner: address,
+              chainId: tokenInfo.chainId
+            }
+          );
+          setIsApproved(allowance >= requiredAmount);
+        }
+
         setIsCheckingApproval(false);
       } catch (err) {
         console.error("[CLIENT] Error checking approval:", err);
@@ -169,25 +183,53 @@ export function CreateOrderButton({
     }
 
     try {
+      const isMegaEth = tokenInfo.chainId === 6342;
+
       if (!isNativeCurrencyTrade) {
-        const allowance = await getCowProtocolAllowance(
-          activePublicClient,
-          activeWalletClient,
-          {
+        let allowance: bigint;
+
+        if (isMegaEth) {
+          // Use GTE SDK for MegaETH
+          const { getGteAllowance } = await import("@/lib/gte-swap-client");
+          allowance = await getGteAllowance({
             tokenAddress: tokenInfo.fromTokenAddress as Address,
-            owner: address,
-            chainId: tokenInfo.chainId
-          }
-        );
+            userAddress: address,
+            publicClient: activePublicClient
+          });
+        } else {
+          // Use CoW Protocol for other chains
+          allowance = await getCowProtocolAllowance(
+            activePublicClient,
+            activeWalletClient,
+            {
+              tokenAddress: tokenInfo.fromTokenAddress as Address,
+              owner: address,
+              chainId: tokenInfo.chainId
+            }
+          );
+        }
 
         if (allowance < requiredAmount) {
           setOrderStatus("approving");
 
-          await approveCowProtocol(activePublicClient, activeWalletClient, {
-            tokenAddress: tokenInfo.fromTokenAddress as Address,
-            amount: requiredAmount,
-            chainId: tokenInfo.chainId
-          });
+          if (isMegaEth) {
+            // Use GTE SDK for approval
+            const { approveGte } = await import("@/lib/gte-swap-client");
+            await approveGte({
+              tokenAddress: tokenInfo.fromTokenAddress as Address,
+              userAddress: address,
+              amount: requiredAmount,
+              publicClient: activePublicClient,
+              walletClient: activeWalletClient
+            });
+          } else {
+            // Use CoW Protocol for approval
+            await approveCowProtocol(activePublicClient, activeWalletClient, {
+              tokenAddress: tokenInfo.fromTokenAddress as Address,
+              amount: requiredAmount,
+              chainId: tokenInfo.chainId
+            });
+          }
         }
 
         setIsApproved(true);
@@ -234,20 +276,29 @@ export function CreateOrderButton({
   };
 
   if (orderStatus === "success") {
+    const isMegaEth = tokenInfo.chainId === 6342;
+
     return (
       <div className="space-y-2">
         <div className="text-xs text-emerald-400 bg-emerald-500/10 px-3 py-2 rounded-md">
-          ✓ Order submitted successfully! Your swap will be executed in the next
-          batch auction.
+          {isMegaEth ? (
+            <>✓ Swap submitted successfully! Your transaction has been sent to the network.</>
+          ) : (
+            <>✓ Order submitted successfully! Your swap will be executed in the next batch auction.</>
+          )}
         </div>
         {orderId && (
           <a
-            href={`https://explorer.cow.fi/orders/${orderId}?chainId=${tokenInfo.chainId}`}
+            href={
+              isMegaEth
+                ? `https://megaeth-testnet.blockscout.com/tx/${orderId}`
+                : `https://explorer.cow.fi/orders/${orderId}?chainId=${tokenInfo.chainId}`
+            }
             target="_blank"
             rel="noopener noreferrer"
             className="block text-xs text-primary-400 hover:text-primary-300"
           >
-            View order details →
+            {isMegaEth ? "View transaction →" : "View order details →"}
           </a>
         )}
       </div>

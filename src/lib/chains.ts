@@ -1,5 +1,6 @@
 import type { Chain } from "viem";
 import { arbitrum, base, /* bsc, */ mainnet /*, polygon */ } from "viem/chains";
+import { megaethTestnet } from "@reown/appkit/networks";
 
 // Chain IDs for supported networks
 export const CHAIN_IDS = {
@@ -7,7 +8,8 @@ export const CHAIN_IDS = {
   // BNB: 56,
   POLYGON: 137,
   BASE: 8453,
-  ARBITRUM: 42161
+  ARBITRUM: 42161,
+  MEGAETH_TESTNET: 6342
 } as const;
 
 // Chain names mapping
@@ -16,13 +18,17 @@ export const CHAIN_NAMES: Record<number, string> = {
   // [CHAIN_IDS.BNB]: "BNB Chain",
   // [CHAIN_IDS.POLYGON]: "Polygon",
   [CHAIN_IDS.BASE]: "Base",
-  [CHAIN_IDS.ARBITRUM]: "Arbitrum"
+  [CHAIN_IDS.ARBITRUM]: "Arbitrum",
+  [CHAIN_IDS.MEGAETH_TESTNET]: "MegaETH Testnet"
 };
 
 // Detect chain ID from user input
 export function detectChainFromQuery(query: string): number {
   const lowerQuery = query.toLowerCase();
 
+  if (lowerQuery.includes("megaeth") || lowerQuery.includes("mega eth") || lowerQuery.includes("6342")) {
+    return CHAIN_IDS.MEGAETH_TESTNET;
+  }
   if (lowerQuery.includes("ethereum") || lowerQuery.includes("mainnet") || lowerQuery.includes("eth")) {
     return CHAIN_IDS.ETHEREUM;
   }
@@ -56,6 +62,8 @@ export function getViemChain(chainId: number): Chain | undefined {
       return base;
     case CHAIN_IDS.ARBITRUM:
       return arbitrum;
+    case CHAIN_IDS.MEGAETH_TESTNET:
+      return megaethTestnet as Chain;
     default:
       return undefined;
   }

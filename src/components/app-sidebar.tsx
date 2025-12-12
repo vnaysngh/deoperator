@@ -9,18 +9,20 @@ import {
   SidebarHeader,
   SidebarMenu,
   SidebarMenuButton,
-  SidebarMenuItem
+  SidebarMenuItem,
+  SidebarFooter
 } from "@/components/ui/sidebar";
 import {
   ArrowLeftRight,
   Wallet,
-  BarChart3,
   Clock,
   Plus,
   ChevronDown,
   Trash2,
   Activity,
-  Coins
+  Coins,
+  Twitter,
+  Send
   // TrendingUp,
   // History,
   // Shield,
@@ -28,6 +30,7 @@ import {
   // HelpCircle
 } from "lucide-react";
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
 import { useAccount } from "wagmi";
 import { useCallback, useEffect, useState } from "react";
@@ -85,8 +88,8 @@ const menuItems = [
 ];
 
 const secondaryItems = [
-  { title: "Positions", icon: Wallet, url: "/positions" },
-  { title: "Transactions", icon: BarChart3, url: "/transactions" }
+  { title: "Portfolio", icon: Wallet, url: "/portfolio" }
+  // { title: "Transactions", icon: Clock, url: "/transactions" }
 ];
 
 const formatRelativeTime = (input: string) => {
@@ -247,22 +250,14 @@ export function AppSidebar() {
       <SidebarHeader className="border-b border-white/5">
         <SidebarMenu>
           <SidebarMenuItem>
-            <SidebarMenuButton
-              size="lg"
-              className="hover:bg-white/5"
-              style={{ gap: "0 rem" }}
-            >
-              <div className="flex h-10 w-10 flex-col items-start justify-center gap-1 px-1.5">
-                <span className="text-[10px] font-semibold uppercase tracking-[0.32em] text-primary-400">
-                  DE
-                </span>
-                <span className="flex items-center gap-1 text-[9px] font-medium tracking-[0.22em] text-white/80">
-                  <span className="text-primary-400/80 font-mono text-[11px] leading-none">
-                    ›
-                  </span>
-                  OP
-                </span>
-              </div>
+            <SidebarMenuButton size="lg" className="hover:bg-white/5">
+              <Image
+                src="/images/logo.png"
+                alt="DeOperator Logo"
+                width={40}
+                height={40}
+                className="rounded-md"
+              />
               <div className="flex flex-col gap-0.5 leading-none">
                 <span className="font-bold gradient-text">DeOperator</span>
                 <span className="text-xs text-gray-500">Trading Terminal</span>
@@ -466,23 +461,30 @@ export function AppSidebar() {
         </AlertDialogContent>
       </AlertDialog>
 
-      {/*  <SidebarFooter className="border-t border-white/5">
-        <SidebarMenu>
-          <SidebarMenuItem>
-            <SidebarMenuButton className="hover:bg-white/5">
-              <div className="w-8 h-8 rounded-full bg-gradient-to-br from-primary-600/20 to-primary-700/20 flex items-center justify-center border border-primary-500/30">
-                <span className="text-primary-400 font-semibold text-sm">
-                  V
-                </span>
-              </div>
-              <div className="flex flex-col gap-0.5 leading-none">
-                <span className="text-sm font-medium">Vinay</span>
-                <span className="text-xs text-gray-500">0x1234...5678</span>
-              </div>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-        </SidebarMenu>
-      </SidebarFooter> */}
+      <SidebarFooter className="border-t border-white/5">
+        <div className="px-4 py-2">
+          <div className="flex items-center justify-center gap-3">
+            <a
+              href="https://x.com/deopdotfun"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center justify-center w-8 h-8 rounded-lg bg-white/5 text-gray-400 hover:bg-[#7fffd41a] hover:text-[#7fffd4] transition-all duration-200 group"
+              aria-label="Follow us on Twitter"
+            >
+              <Twitter className="w-4 h-4 group-hover:scale-110 transition-transform" />
+            </a>
+            <a
+              href="https://t.me/+e2QdhRweac1kYjc9"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center justify-center w-8 h-8 rounded-lg bg-white/5 text-gray-400 hover:bg-[#7fffd41a] hover:text-[#7fffd4] transition-all duration-200 group"
+              aria-label="Join us on Telegram"
+            >
+              <Send className="w-4 h-4 group-hover:scale-110 transition-transform" />
+            </a>
+          </div>
+        </div>
+      </SidebarFooter>
     </Sidebar>
   );
 }

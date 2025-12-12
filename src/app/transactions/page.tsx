@@ -7,28 +7,42 @@ import { AppSidebar } from "@/components/app-sidebar";
 import { SidebarProvider, SidebarInset, SidebarTrigger } from "@/components/ui/sidebar";
 import { FloatingTransactionsChat } from "@/components/FloatingTransactionsChat";
 
+// Zapper API Transaction Format
 interface Transaction {
   hash: string;
-  nonce: string;
-  transaction_index: string;
-  from_address: string;
-  from_address_label: string | null;
-  to_address: string;
-  to_address_label: string | null;
-  value: string;
-  gas: string;
-  gas_price: string;
-  input: string;
-  receipt_cumulative_gas_used: string;
-  receipt_gas_used: string;
-  receipt_contract_address: string | null;
-  receipt_root: string | null;
-  receipt_status: string;
-  block_timestamp: string;
-  block_number: string;
-  block_hash: string;
-  transfer_index?: number[];
-  transaction_fee?: string;
+  network: string;
+  timestamp: number;
+  from: string;
+  fromLabel: string | null;
+  to: string | null;
+  toLabel: string | null;
+  value?: string;
+  description?: string | null;
+  tokenDeltas?: Array<{
+    address: string;
+    amount: number;
+    amountRaw: string;
+    token: {
+      address: string;
+      name: string;
+      symbol: string;
+      decimals: number;
+      imageUrlV2?: string | null;
+    };
+  }>;
+  fungibleDeltas?: Array<{
+    address: string;
+    amount: number;
+    amountRaw: string;
+    token: {
+      address: string;
+      name: string;
+      symbol: string;
+      decimals: number;
+      imageUrlV2?: string | null;
+    };
+  }>;
+  type: "timeline" | "delta";
 }
 
 const getChainName = (chainId: number) => {
@@ -38,9 +52,25 @@ const getChainName = (chainId: number) => {
     250: "fantom",
     42161: "arbitrum",
     10: "optimism",
+    6342: "megaeth",
   };
   return chainMap[chainId] || "eth";
 };
+
+const getExplorerUrl = (chainId: number, txHash: string) => {
+  const explorerMap: Record<number, string> = {
+    1: `https://etherscan.io/tx/${txHash}`,
+    42161: `https://arbiscan.io/tx/${txHash}`,
+    8453: `https://basescan.org/tx/${txHash}`,
+    10: `https://optimistic.etherscan.io/tx/${txHash}`,
+    137: `https://polygonscan.com/tx/${txHash}`,
+    43114: `https://snowtrace.io/tx/${txHash}`,
+    250: `https://ftmscan.com/tx/${txHash}`,
+    6342: `https://megaeth-testnet.blockscout.com/tx/${txHash}`,
+  };
+  return explorerMap[chainId] || `https://etherscan.io/tx/${txHash}`;
+};
+
 
 const fetchTransactions = async (
   address: string,
@@ -52,7 +82,7 @@ const fetchTransactions = async (
   console.log("[TRANSACTIONS] Fetching transactions for:", address, "chain:", chainName);
 
   const response = await fetch(
-    `/api/transactions?address=${address}&chain=${chainName}&limit=25${cursorParam}`
+    `/api/transactions?address=${address}&chain=${chainName}&limit=20${cursorParam}`
   );
 
   console.log("[TRANSACTIONS] Response status:", response.status);
@@ -106,21 +136,23 @@ export default function TransactionsPage() {
     return ethValue.toFixed(6);
   };
 
-  const formatDate = (timestamp: string) => {
+  const formatDate = (timestamp: number) => {
+    // Zapper returns timestamp in milliseconds (not seconds)
     const date = new Date(timestamp);
-    return date.toLocaleDateString("en-US", {
+    return date.toLocaleString("en-US", {
       month: "short",
       day: "numeric",
       year: "numeric",
-      hour: "2-digit",
+      hour: "numeric",
       minute: "2-digit",
+      hour12: true,
     });
   };
 
   const getTransactionType = (tx: Transaction) => {
     if (!address) return "unknown";
-    if (tx.from_address.toLowerCase() === address.toLowerCase()) {
-      return tx.to_address ? "sent" : "contract-creation";
+    if (tx.from.toLowerCase() === address.toLowerCase()) {
+      return tx.to ? "sent" : "contract-creation";
     }
     return "received";
   };
@@ -228,7 +260,7 @@ export default function TransactionsPage() {
                                   From/To
                                 </th>
                                 <th className="px-4 py-3 text-xs font-semibold text-gray-400 uppercase">
-                                  Amount
+                                  Details
                                 </th>
                                 <th className="px-4 py-3 text-xs font-semibold text-gray-400 uppercase">
                                   Status
@@ -245,48 +277,100 @@ export default function TransactionsPage() {
                               {transactions.map((tx, index) => {
                                 const type = getTransactionType(tx);
                                 const typeInfo = getTransactionTypeInfo(type);
-                                const value = parseFloat(tx.value) / 1e18;
+                                const value = tx.value ? parseFloat(tx.value) / 1e18 : 0;
+
+                                // Get token deltas for display
+                                const deltas = tx.tokenDeltas || tx.fungibleDeltas || [];
+                                const hasDescription = tx.description && tx.description.trim();
 
                                 return (
                                   <tr
-                                    key={index}
+                                    key={`${tx.hash}-${index}`}
                                     className="hover:bg-white/5 transition-colors"
                                   >
                                     {/* Type */}
                                     <td className="px-4 py-4">
-                                      <div className="flex items-center gap-2">
-                                        <span className="text-lg">{typeInfo.icon}</span>
-                                        <span className={`text-sm font-semibold ${typeInfo.color}`}>
-                                          {typeInfo.label}
-                                        </span>
+                                      <span className={`text-sm font-semibold ${typeInfo.color}`}>
+                                        {typeInfo.icon} {typeInfo.label}
+                                      </span>
+                                    </td>
+
+                                    {/* From/To with Avatars */}
+                                    <td className="px-4 py-4">
+                                      <div className="text-sm space-y-2">
+                                        <div className="flex items-center gap-2">
+                                          <div className="w-6 h-6 rounded-full bg-gradient-to-br from-blue-500/20 to-purple-500/20 flex items-center justify-center text-[10px]">
+                                            {tx.fromLabel ? tx.fromLabel.slice(0, 2).toUpperCase() : "?"}
+                                          </div>
+                                          <div>
+                                            <div className="text-gray-400 text-[10px]">From</div>
+                                            <div className="text-white font-mono text-xs">
+                                              {tx.fromLabel || formatAddress(tx.from)}
+                                            </div>
+                                          </div>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                          <div className="w-6 h-6 rounded-full bg-gradient-to-br from-emerald-500/20 to-cyan-500/20 flex items-center justify-center text-[10px]">
+                                            {tx.toLabel ? tx.toLabel.slice(0, 2).toUpperCase() : tx.to ? "?" : "📄"}
+                                          </div>
+                                          <div>
+                                            <div className="text-gray-400 text-[10px]">To</div>
+                                            <div className="text-white font-mono text-xs">
+                                              {tx.to ? (tx.toLabel || formatAddress(tx.to)) : "Contract"}
+                                            </div>
+                                          </div>
+                                        </div>
                                       </div>
                                     </td>
 
-                                    {/* From/To */}
+                                    {/* Details with Token Logos */}
                                     <td className="px-4 py-4">
-                                      <div className="text-sm">
-                                        <div className="text-gray-400 text-xs mb-0.5">
-                                          From
+                                      {hasDescription ? (
+                                        <div className="flex items-start gap-2">
+                                          {deltas.length > 0 && deltas[0].token.imageUrlV2 ? (
+                                            // eslint-disable-next-line @next/next/no-img-element
+                                            <img
+                                              src={deltas[0].token.imageUrlV2}
+                                              alt={deltas[0].token.symbol}
+                                              className="w-5 h-5 rounded-full flex-shrink-0 mt-0.5"
+                                              onError={(e) => {
+                                                (e.target as HTMLImageElement).style.display = "none";
+                                              }}
+                                            />
+                                          ) : null}
+                                          <div className="text-xs text-gray-300 max-w-xs">
+                                            {tx.description}
+                                          </div>
                                         </div>
-                                        <div className="text-white font-mono text-xs">
-                                          {tx.from_address_label || formatAddress(tx.from_address)}
+                                      ) : value > 0 ? (
+                                        <div className="flex items-center gap-2">
+                                          <div className="w-5 h-5 rounded-full bg-gradient-to-br from-blue-400 to-purple-500 flex items-center justify-center text-[10px] font-bold text-white">
+                                            Ξ
+                                          </div>
+                                          <div className={`text-sm font-semibold ${typeInfo.color}`}>
+                                            {formatValue(tx.value!)} ETH
+                                          </div>
                                         </div>
-                                        <div className="text-gray-400 text-xs mt-1 mb-0.5">
-                                          To
-                                        </div>
-                                        <div className="text-white font-mono text-xs">
-                                          {tx.to_address
-                                            ? tx.to_address_label || formatAddress(tx.to_address)
-                                            : "Contract"}
-                                        </div>
-                                      </div>
-                                    </td>
-
-                                    {/* Amount */}
-                                    <td className="px-4 py-4">
-                                      {value > 0 ? (
-                                        <div className={`text-sm font-semibold ${typeInfo.color}`}>
-                                          {formatValue(tx.value)} ETH
+                                      ) : deltas.length > 0 ? (
+                                        <div className="flex items-center gap-2">
+                                          {deltas[0].token.imageUrlV2 ? (
+                                            // eslint-disable-next-line @next/next/no-img-element
+                                            <img
+                                              src={deltas[0].token.imageUrlV2}
+                                              alt={deltas[0].token.symbol}
+                                              className="w-5 h-5 rounded-full"
+                                              onError={(e) => {
+                                                (e.target as HTMLImageElement).style.display = "none";
+                                              }}
+                                            />
+                                          ) : (
+                                            <div className="w-5 h-5 rounded-full bg-gradient-to-br from-primary-500 to-primary-600 flex items-center justify-center text-[9px] font-bold">
+                                              {deltas[0].token.symbol.slice(0, 2)}
+                                            </div>
+                                          )}
+                                          <div className="text-xs text-gray-300">
+                                            {deltas[0].token.symbol}
+                                          </div>
                                         </div>
                                       ) : (
                                         <span className="text-xs text-gray-500">
@@ -295,36 +379,33 @@ export default function TransactionsPage() {
                                       )}
                                     </td>
 
-                                    {/* Status */}
+                                    {/* Status - Zapper only returns successful txs */}
                                     <td className="px-4 py-4">
-                                      <span
-                                        className={`inline-flex items-center gap-1 text-xs font-medium ${
-                                          tx.receipt_status === "1"
-                                            ? "text-emerald-400"
-                                            : "text-red-400"
-                                        }`}
-                                      >
-                                        {tx.receipt_status === "1" ? "✓" : "✗"}
-                                        {tx.receipt_status === "1" ? "Success" : "Failed"}
+                                      <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-emerald-500/10 text-xs font-medium text-emerald-400">
+                                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+                                        Success
                                       </span>
                                     </td>
 
                                     {/* Date */}
                                     <td className="px-4 py-4">
                                       <div className="text-xs text-gray-400">
-                                        {formatDate(tx.block_timestamp)}
+                                        {formatDate(tx.timestamp)}
                                       </div>
                                     </td>
 
                                     {/* Action */}
                                     <td className="px-4 py-4">
                                       <a
-                                        href={`https://etherscan.io/tx/${tx.hash}`}
+                                        href={getExplorerUrl(chain?.id || 1, tx.hash)}
                                         target="_blank"
                                         rel="noopener noreferrer"
-                                        className="text-xs text-primary-400 hover:text-primary-300"
+                                        className="text-xs text-primary-400 hover:text-primary-300 flex items-center gap-1"
                                       >
-                                        View →
+                                        View
+                                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                                        </svg>
                                       </a>
                                     </td>
                                   </tr>
